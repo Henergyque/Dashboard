@@ -17,7 +17,16 @@ const ZONE_LABELS = {
   unknown: 'Unknown'
 };
 const ZONE_ORDER = ['intro','jeu1','jeu2_hub','jeu2_gauche','jeu2_droite','jeu2_arbre','endgame','speciales','unknown'];
-const APP_VERSION = (function() { try { return require('./package.json').version; } catch(e) { return '1.0.0'; } })();
+const APP_VERSION = (function() {
+  try {
+    if (_nw) {
+      const vf = _nw.path.join(_nw.path.dirname(process.execPath), 'package.nw', '.sg_version');
+      if (_nw.fs.existsSync(vf)) return _nw.fs.readFileSync(vf, 'utf8').trim();
+    }
+  } catch(e) {}
+  try { return require('./package.json').version; } catch(e) {}
+  return '1.0.0';
+})();
 const VERSION_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
 const MAP_NAMES = {
@@ -262,11 +271,11 @@ function showUpdateModal(version, url, notes) {
     document.getElementById('sgUpdateInstall').disabled = true;
     document.getElementById('sgUpdateInstall').textContent = 'Installing…';
     document.getElementById('sgUpdateProgress').style.display = 'block';
-    installUpdate(url);
+    installUpdate(url, version);
   };
 }
 
-function installUpdate(url) {
+function installUpdate(url, targetVersion) {
   if (!_nw) return;
   const { path, fs, os, https, http, cp } = _nw;
   const bar = document.getElementById('sgUpdateBar');
@@ -310,6 +319,7 @@ function installUpdate(url) {
       cp.execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], (err2) => {
         try { fs.unlinkSync(tmpZip); } catch(e) {}
         if (err2) { setTxt('✗ Failed: ' + err2.message); return; }
+        try { if (targetVersion) fs.writeFileSync(path.join(packageNwDir, '.sg_version'), targetVersion); } catch(e) {}
         setTxt('Restarting…');
         const bat = `@echo off\r\ntimeout /t 2 /nobreak > nul\r\nstart "" "${exePath}"\r\ndel "%~f0"\r\n`;
         const batPath = path.join(os.tmpdir(), 'sg-relaunch.bat');
