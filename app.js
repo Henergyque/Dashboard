@@ -1,5 +1,9 @@
 'use strict';
 
+// ---------- NW.js modules (desktop only) ----------
+let _nw = null;
+try { _nw = { path: require('path'), fs: require('fs'), os: require('os'), https: require('https'), http: require('http'), cp: require('child_process') }; } catch(e) {}
+
 // ---------- Zone display names + map names (mirrors SG_Telemetry.js + MapInfos.json) ----------
 const ZONE_LABELS = {
   intro: 'Intro / Maison',
@@ -218,16 +222,92 @@ function setConn(state, text) {
   if (t) t.textContent = text; else elConn.textContent = text;
 }
 
-function showUpdateNotice(latest, url) {
-  if (!elUpdateNotice) return;
-  elUpdateNotice.classList.remove('hidden');
-  const href = url ? `<a href="${url}" target="_blank">download</a>` : 'check the release page';
-  elUpdateNotice.innerHTML = `New version available: <strong>${latest}</strong> · ${href}`;
-}
 function hideUpdateNotice() {
   if (!elUpdateNotice) return;
   elUpdateNotice.classList.add('hidden');
   elUpdateNotice.innerHTML = '';
+}
+
+function showUpdateModal(version, url, notes) {
+  const existing = document.getElementById('sgUpdateModal');
+  if (existing) return;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'sgUpdateModal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,4,20,0.92);display:flex;align-items:center;justify-content:center;z-index:9999;';
+
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#1a0d2e;border:1px solid rgba(234,173,229,0.3);border-radius:12px;padding:32px;width:480px;max-width:90vw;';
+  box.innerHTML = `
+    <h2 style="color:#eaade5;margin:0 0 10px;font-size:18px;">Update available — v${version}</h2>
+    ${notes ? `<p style="color:#9a7aaa;font-size:13px;margin:0 0 20px;white-space:pre-wrap;max-height:120px;overflow-y:auto;">${notes}</p>` : '<p style="color:#9a7aaa;font-size:13px;margin:0 0 20px;">A new version is ready to install.</p>'}
+    <div id="sgUpdateProgress" style="display:none;margin-bottom:16px;">
+      <div style="background:#2c1a40;border-radius:4px;height:6px;overflow:hidden;">
+        <div id="sgUpdateBar" style="background:#eaade5;height:100%;width:0%;transition:width 0.3s;"></div>
+      </div>
+      <p id="sgUpdateText" style="color:#9a7aaa;font-size:12px;margin:6px 0 0;"></p>
+    </div>
+    <div style="display:flex;gap:12px;justify-content:flex-end;">
+      <button id="sgUpdateLater" style="background:transparent;color:#6a4870;border:1px solid #3a2450;border-radius:6px;padding:8px 18px;cursor:pointer;font-size:13px;">Later</button>
+      <button id="sgUpdateInstall" style="background:rgba(234,173,229,0.15);color:#eaade5;border:1px solid rgba(234,173,229,0.4);border-radius:6px;padding:8px 20px;cursor:pointer;font-size:13px;">Install & Restart</button>
+    </div>
+  `;
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  document.getElementById('sgUpdateLater').onclick = () => overlay.remove();
+  document.getElementById('sgUpdateInstall').onclick = () => {
+    document.getElementById('sgUpdateLater').style.display = 'none';
+    document.getElementById('sgUpdateInstall').disabled = true;
+    document.getElementById('sgUpdateInstall').textContent = 'Installing…';
+    document.getElementById('sgUpdateProgress').style.display = 'block';
+    installUpdate(url);
+  };
+}
+
+function installUpdate(url) {
+  if (!_nw) return;
+  const { path, fs, os, https, http, cp } = _nw;
+  const bar = document.getElementById('sgUpdateBar');
+  const txt = document.getElementById('sgUpdateText');
+  const setTxt = (t) => { if (txt) txt.textContent = t; };
+  const setBar = (pct) => { if (bar) bar.style.width = pct + '%'; };
+
+  const tmpZip = path.join(os.tmpdir(), 'sg-dashboard-update.zip');
+  const exePath = process.execPath;
+  const packageNwDir = path.join(path.dirname(exePath), 'package.nw');
+  const parsed = new URL(url);
+  const transport = parsed.protocol === 'https:' ? https : http;
+
+  setTxt('Downloading…');
+
+  const file = fs.createWriteStream(tmpZip);
+  transport.get(url, (res) => {
+    const total = parseInt(res.headers['content-length'] || '0', 10);
+    let done = 0;
+    res.on('data', (chunk) => {
+      done += chunk.length;
+      if (total > 0) setBar(Math.round(done / total * 100));
+    });
+    res.pipe(file);
+    file.on('finish', () => {
+      file.close();
+      setBar(100); setTxt('Extracting…');
+      const ps = `Expand-Archive -LiteralPath '${tmpZip.replace(/'/g, "''")}' -DestinationPath '${packageNwDir.replace(/'/g, "''")}' -Force`;
+      cp.execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], (err) => {
+        try { fs.unlinkSync(tmpZip); } catch(e) {}
+        if (err) { setTxt('✗ Failed: ' + err.message); return; }
+        setTxt('Restarting…');
+        const bat = `@echo off\r\ntimeout /t 2 /nobreak > nul\r\nstart "" "${exePath}"\r\ndel "%~f0"\r\n`;
+        const batPath = path.join(os.tmpdir(), 'sg-relaunch.bat');
+        fs.writeFileSync(batPath, bat);
+        cp.spawn('cmd.exe', ['/c', batPath], { detached: true, stdio: 'ignore' }).unref();
+        setTimeout(() => nw.App.quit(), 600);
+      });
+    });
+    file.on('error', (err) => { fs.unlink(tmpZip, () => {}); setTxt('✗ ' + err.message); });
+  }).on('error', (err) => { fs.unlink(tmpZip, () => {}); setTxt('✗ ' + err.message); });
 }
 
 function populateAnnouncementForm() {
@@ -399,23 +479,15 @@ async function checkVersion() {
     const data = await api('/v1/version');
     const latest = String(data?.latest || '').trim();
     const url = String(data?.url || '').trim();
+    const notes = String(data?.notes || '').trim();
     if (!latest) return;
     if (latest !== APP_VERSION) {
-      showUpdateNotice(latest, url);
-      if (Notification && Notification.permission === 'granted') {
-        new Notification('SuccubusStats', {
-          body: `Version ${latest} is available.`,
-          silent: true
-        });
-      } else if (Notification && Notification.permission !== 'denied') {
-        Notification.requestPermission().then((permission) => {
-          if (permission === 'granted') {
-            new Notification('SuccubusStats', {
-              body: `Version ${latest} is available.`,
-              silent: true
-            });
-          }
-        });
+      if (_nw && url) {
+        showUpdateModal(latest, url, notes);
+      } else {
+        if (!elUpdateNotice) return;
+        elUpdateNotice.classList.remove('hidden');
+        elUpdateNotice.innerHTML = `New version available: <strong>${latest}</strong>`;
       }
     } else {
       hideUpdateNotice();
