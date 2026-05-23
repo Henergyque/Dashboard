@@ -17,7 +17,7 @@ const ZONE_LABELS = {
   unknown: 'Unknown'
 };
 const ZONE_ORDER = ['intro','jeu1','jeu2_hub','jeu2_gauche','jeu2_droite','jeu2_arbre','endgame','speciales','unknown'];
-const APP_VERSION = '1.0.0';
+const APP_VERSION = (function() { try { return require('./package.json').version; } catch(e) { return '1.0.0'; } })();
 const VERSION_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
 const MAP_NAMES = {
