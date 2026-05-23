@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SuccubusStats — Live</title>
+<link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+<aside class="sidebar">
+  <div class="brand">
+    <img src="succubus.png" class="brand-banner" alt="Succubus">
+    <div class="brand-title">SuccubusStats</div>
+    <div class="brand-sub">live owner dashboard</div>
+  </div>
+  <div class="status" id="connStatus"><span class="dot"></span><span class="status-text">connecting…</span></div>
+  <div class="update-pill hidden" id="updateNotice"></div>
+  <nav class="sidebar-nav">
+    <button id="navLive" class="nav-btn active"><span class="nav-icon">◈</span>Live</button>
+    <button id="navAnnouncement" class="nav-btn"><span class="nav-icon">◆</span>Announcement</button>
+    <button id="navReports" class="nav-btn"><span class="nav-icon">⚠</span>Reports</button>
+    <button id="navSettings" class="nav-btn"><span class="nav-icon">⚙</span>Settings</button>
+  </nav>
+</aside>
+
+<main class="main">
+  <section id="tab-live" class="tab-panel">
+    <section class="row">
+      <div class="card big-counter">
+        <div class="card-title">Players online</div>
+        <div class="big-number" id="onlineCount">—</div>
+        <div class="card-sub" id="onlineSub"></div>
+      </div>
+      <div class="card big-counter">
+        <div class="card-title">Record simultaneous</div>
+        <div class="big-number" id="recordCount">—</div>
+        <div class="card-sub">all time</div>
+      </div>
+      <div class="card big-counter">
+        <div class="card-title">Unique players</div>
+        <div class="big-number" id="uniqueCount">—</div>
+        <div class="card-sub">all time</div>
+      </div>
+    </section>
+
+    <section class="row">
+      <div class="card grow">
+        <div class="card-title">Players per zone (live)</div>
+        <div id="zoneBars" class="zone-bars"></div>
+      </div>
+      <div class="card grow">
+        <div class="card-title">Top drop-off zones (24h)</div>
+        <table class="dropoff-table" id="dropoffZones">
+          <thead><tr><th>Zone</th><th>Quits</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="card-title" style="margin-top:14px">Top drop-off maps (24h)</div>
+        <table class="dropoff-table" id="dropoffMaps">
+          <thead><tr><th>Map</th><th>Quits</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="row">
+      <div class="card grow">
+        <div class="card-title">Concurrent players</div>
+        <div class="range-tabs">
+          <button class="tab active" data-range="24h">24h</button>
+          <button class="tab" data-range="7d">7d</button>
+          <button class="tab" data-range="30d">30d</button>
+        </div>
+        <div class="chart-wrap"><canvas id="concurrentChart"></canvas></div>
+      </div>
+    </section>
+  </section>
+
+  <section id="tab-announcement" class="tab-panel hidden">
+    <div id="announcementView" class="announcement-banner hidden"></div>
+    <section class="card admin-card">
+      <div class="card-title">Announcement</div>
+      <div id="announceStats" class="announce-stats hidden"></div>
+      <label>Title<br><input type="text" id="announceTitle" placeholder="New build available"></label>
+      <label>Message<br><textarea id="announceBody" placeholder="Write your announcement here"></textarea></label>
+      <label>Link (optional)<br><input type="text" id="announceUrl" placeholder="https://example.com"></label>
+      <label>Version (optional)<br><input type="text" id="announceVersion" placeholder="0.2.4"></label>
+      <div class="announce-actions">
+        <button id="announceDelete">Delete active</button>
+        <button id="announcePublish" class="primary">Publish announcement</button>
+      </div>
+    </section>
+  </section>
+
+  <section id="tab-reports" class="tab-panel hidden">
+    <section class="row">
+      <div class="card grow" style="overflow:visible">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+          Bug Reports
+          <button id="reportsClear" style="font-size:12px;padding:4px 12px">Clear all</button>
+        </div>
+        <table class="dropoff-table" id="reportsTable" style="width:100%">
+          <thead><tr><th>Time</th><th>Error</th><th>Zone</th><th>Version</th><th>Platform</th><th>Player</th></tr></thead>
+          <tbody><tr><td colspan="6" style="text-align:center;color:#8a7891">No reports yet</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <section id="tab-settings" class="tab-panel hidden">
+    <div class="card">
+      <div class="card-title">Connection settings</div>
+      <label>Backend base URL<br><input type="text" id="cfgUrl" placeholder="https://your-app.up.railway.app"></label>
+      <label>Admin token<br><input type="password" id="cfgToken" placeholder="ADMIN_TOKEN"></label>
+      <div class="modal-actions" style="justify-content:flex-start; margin-top:18px;">
+        <button id="cfgSave" class="primary">Save & reconnect</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="vendor/chart.umd.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "name": "SuccubusStats",
+  "version": "1.0.0",
+  "main": "index.html",
+  "window": {
+    "title": "SuccubusStats",
+    "width": 1200,
+    "height": 800,
+    "min_width": 900,
+    "min_height": 600,
+    "icon": "icon.png",
+    "frame": true,
+    "resizable": true
+  },
+  "chromium-args": "--enable-features=OverlayScrollbar",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "devDependencies": {
+    "nw-builder": "^4.7.6"
+  }
+}

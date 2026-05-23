@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create update zip
+        run: zip -r dashboard.zip app.js index.html dashboard.css package.json icon.png succubus.png vendor/
+
+      - name: Publish release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: latest
+          name: Latest
+          allowUpdates: true
+          removeArtifacts: true
+          artifacts: dashboard.zip
+          token: ${{ secrets.GITHUB_TOKEN }}

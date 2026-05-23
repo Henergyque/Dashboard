@@ -1,0 +1,4 @@
+node_modules/
+dist/
+cache/
+vendor/chart.umd.min.js
