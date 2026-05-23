@@ -277,15 +277,27 @@ function installUpdate(url) {
   const tmpZip = path.join(os.tmpdir(), 'sg-dashboard-update.zip');
   const exePath = process.execPath;
   const packageNwDir = path.join(path.dirname(exePath), 'package.nw');
-  const parsed = new URL(url);
-  const transport = parsed.protocol === 'https:' ? https : http;
 
   setTxt('Downloading…');
 
-  const file = fs.createWriteStream(tmpZip);
-  transport.get(url, (res) => {
+  function doGet(getUrl, cb) {
+    const parsed = new URL(getUrl);
+    const transport = parsed.protocol === 'https:' ? https : http;
+    transport.get(getUrl, (res) => {
+      if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
+        res.resume();
+        doGet(res.headers.location, cb);
+      } else {
+        cb(null, res);
+      }
+    }).on('error', (err) => cb(err));
+  }
+
+  doGet(url, (err, res) => {
+    if (err) { setTxt('✗ ' + err.message); return; }
     const total = parseInt(res.headers['content-length'] || '0', 10);
     let done = 0;
+    const file = fs.createWriteStream(tmpZip);
     res.on('data', (chunk) => {
       done += chunk.length;
       if (total > 0) setBar(Math.round(done / total * 100));
@@ -295,9 +307,9 @@ function installUpdate(url) {
       file.close();
       setBar(100); setTxt('Extracting…');
       const ps = `Expand-Archive -LiteralPath '${tmpZip.replace(/'/g, "''")}' -DestinationPath '${packageNwDir.replace(/'/g, "''")}' -Force`;
-      cp.execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], (err) => {
+      cp.execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], (err2) => {
         try { fs.unlinkSync(tmpZip); } catch(e) {}
-        if (err) { setTxt('✗ Failed: ' + err.message); return; }
+        if (err2) { setTxt('✗ Failed: ' + err2.message); return; }
         setTxt('Restarting…');
         const bat = `@echo off\r\ntimeout /t 2 /nobreak > nul\r\nstart "" "${exePath}"\r\ndel "%~f0"\r\n`;
         const batPath = path.join(os.tmpdir(), 'sg-relaunch.bat');
@@ -306,8 +318,8 @@ function installUpdate(url) {
         setTimeout(() => nw.App.quit(), 600);
       });
     });
-    file.on('error', (err) => { fs.unlink(tmpZip, () => {}); setTxt('✗ ' + err.message); });
-  }).on('error', (err) => { fs.unlink(tmpZip, () => {}); setTxt('✗ ' + err.message); });
+    file.on('error', (e) => { fs.unlink(tmpZip, () => {}); setTxt('✗ ' + e.message); });
+  });
 }
 
 function populateAnnouncementForm() {
