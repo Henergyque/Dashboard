@@ -53,6 +53,7 @@ const elOnline = $('onlineCount');
 const elOnlineSub = $('onlineSub');
 const elRecord = $('recordCount');
 const elUnique = $('uniqueCount');
+const elToday = $('todayCount');
 const elZoneBars = $('zoneBars');
 const elConn = $('connStatus');
 const elUpdateNotice = $('updateNotice');
@@ -77,6 +78,10 @@ let reconnectTimer = null;
 let lastRecord = 0;
 let lastAnnouncementIdNotified = null;
 let currentRange = '24h';
+let prevOnline = null;
+let lastWsTs = null;
+let lastReportCount = null;
+let reportsTabOpen = false;
 const RANGE_MS = { '24h': 24*3600*1000, '7d': 7*24*3600*1000, '30d': 30*24*3600*1000 };
 const BUCKET_MS = { '24h': 5*60*1000, '7d': 30*60*1000, '30d': 2*3600*1000 };
 
@@ -114,6 +119,17 @@ function renderLive(live) {
     setTimeout(() => elRecord.classList.remove('flash'), 1200);
   }
   lastRecord = live.record;
+
+  // Delta indicator
+  const elDelta = $('onlineDelta');
+  if (elDelta) {
+    if (prevOnline !== null) {
+      const d = n - prevOnline;
+      elDelta.className = 'big-delta ' + (d > 0 ? 'delta-up' : d < 0 ? 'delta-down' : 'delta-eq');
+      elDelta.textContent = d > 0 ? '+' + d : d < 0 ? String(d) : '—';
+    }
+    prevOnline = n;
+  }
 
   // Zone bars
   const total = Math.max(1, n);
@@ -358,6 +374,8 @@ function populateAnnouncementForm() {
 function populateSettings() {
   $('cfgUrl').value = cfg.url || '';
   $('cfgToken').value = cfg.token || '';
+  const el = $('appVersionLabel');
+  if (el) el.innerHTML = 'SuccubusStats v' + APP_VERSION + ' &nbsp;·&nbsp; made by Henergyque &nbsp;·&nbsp; Kutushmurf est un enculé';
 }
 
 const TAB_NAV_MAP = {
@@ -383,6 +401,11 @@ function showTab(tabId) {
   }
   if (tabId === 'tab-reports') {
     fetchReports();
+    reportsTabOpen = true;
+    const badge = $('reportsBadge');
+    if (badge) badge.classList.add('hidden');
+  } else {
+    reportsTabOpen = false;
   }
   if (tabId === 'tab-settings') {
     populateSettings();
@@ -543,7 +566,12 @@ function connect() {
   ws.onmessage = (ev) => {
     try {
       const msg = JSON.parse(ev.data);
-      if (msg.type === 'snapshot') renderLive(msg.live);
+      if (msg.type === 'snapshot') {
+        lastWsTs = Date.now();
+        const elLU = $('lastUpdate');
+        if (elLU) elLU.textContent = 'updated just now';
+        renderLive(msg.live);
+      }
     } catch (e) {}
   };
   ws.onclose = () => {
@@ -559,6 +587,70 @@ setInterval(refreshDropoff, 60 * 1000);
 setInterval(refreshConcurrent, 5 * 60 * 1000);
 setInterval(checkVersion, VERSION_CHECK_INTERVAL_MS);
 setInterval(fetchAnnouncement, 5 * 60 * 1000);
+
+// Reports badge + notification Windows — poll count every 60s
+async function checkReportsBadge() {
+  if (!cfg.url || !cfg.token) return;
+  try {
+    const data = await api('/v1/reports');
+    const count = (data?.reports || []).length;
+    if (lastReportCount === null) { lastReportCount = count; return; }
+    if (count > lastReportCount) {
+      const diff = count - lastReportCount;
+      if (!reportsTabOpen) {
+        const badge = $('reportsBadge');
+        if (badge) badge.classList.remove('hidden');
+      }
+      if (Notification && Notification.permission === 'granted') {
+        new Notification('SuccubusStats — Bug report', {
+          body: diff === 1 ? '1 nouveau rapport reçu.' : `${diff} nouveaux rapports reçus.`,
+          silent: false
+        });
+      }
+    }
+    lastReportCount = count;
+  } catch (e) { /* ignore */ }
+}
+setInterval(checkReportsBadge, 60 * 1000);
+
+// Joueurs du jour
+async function fetchToday() {
+  if (!cfg.url || !cfg.token) return;
+  try {
+    const data = await api('/v1/stats/today');
+    if (elToday && data?.today != null) elToday.textContent = data.today;
+  } catch (e) { /* ignore */ }
+}
+setInterval(fetchToday, 60 * 1000);
+
+// Export CSV
+function exportReportsCSV(reports) {
+  const header = ['Time', 'Error', 'Zone', 'Version', 'Platform', 'Player'];
+  const rows = reports.map(r => [
+    new Date(r.ts).toLocaleString(),
+    String(r.error || '').replace(/"/g, '""'),
+    r.zone || '',
+    r.version || '',
+    r.platform || '',
+    r.player_id || ''
+  ].map(v => `"${v}"`).join(','));
+  const csv = [header.join(','), ...rows].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `reports-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Last-updated ticker
+setInterval(() => {
+  const el = $('lastUpdate');
+  if (!el || !lastWsTs) return;
+  const s = Math.floor((Date.now() - lastWsTs) / 1000);
+  el.textContent = s < 60 ? `updated ${s}s ago` : `updated ${Math.floor(s / 60)}m ago`;
+}, 10 * 1000);
 
 // ---------- Range tabs ----------
 document.querySelectorAll('.tab').forEach(btn => {
@@ -597,5 +689,25 @@ $('cfgSave')?.addEventListener('click', () => {
 $('announcePublish')?.addEventListener('click', publishAnnouncement);
 $('announceDelete')?.addEventListener('click', deleteAnnouncement);
 
+// ---------- Fullscreen (F11) ----------
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'F11') {
+    e.preventDefault();
+    if (typeof nw !== 'undefined') {
+      const win = nw.Window.get();
+      if (win.isFullscreen) win.leaveFullscreen();
+      else win.enterFullscreen();
+    }
+  }
+});
+
 // ---------- Boot ----------
+if (Notification && Notification.permission === 'default') Notification.requestPermission();
+fetchToday();
+$('reportsExport')?.addEventListener('click', async () => {
+  try {
+    const data = await api('/v1/reports');
+    exportReportsCSV(data?.reports || []);
+  } catch (e) { alert('Unable to fetch reports.'); }
+});
 connect();

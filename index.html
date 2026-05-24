@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
+<div class="sidebar-particles"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
 <aside class="sidebar">
   <div class="brand">
     <img src="succubus.png" class="brand-banner" alt="Succubus">
@@ -17,7 +18,7 @@
   <nav class="sidebar-nav">
     <button id="navLive" class="nav-btn active"><span class="nav-icon">◈</span>Live</button>
     <button id="navAnnouncement" class="nav-btn"><span class="nav-icon">◆</span>Announcement</button>
-    <button id="navReports" class="nav-btn"><span class="nav-icon">⚠</span>Reports</button>
+    <button id="navReports" class="nav-btn"><span class="nav-icon">⚠</span>Reports<span class="nav-badge hidden" id="reportsBadge"></span></button>
     <button id="navSettings" class="nav-btn"><span class="nav-icon">⚙</span>Settings</button>
   </nav>
 </aside>
@@ -28,6 +29,7 @@
       <div class="card big-counter">
         <div class="card-title">Players online</div>
         <div class="big-number" id="onlineCount">—</div>
+        <div class="big-delta" id="onlineDelta"></div>
         <div class="card-sub" id="onlineSub"></div>
       </div>
       <div class="card big-counter">
@@ -40,11 +42,16 @@
         <div class="big-number" id="uniqueCount">—</div>
         <div class="card-sub">all time</div>
       </div>
+      <div class="card big-counter">
+        <div class="card-title">Players today</div>
+        <div class="big-number" id="todayCount">—</div>
+        <div class="card-sub">since midnight</div>
+      </div>
     </section>
 
     <section class="row">
       <div class="card grow">
-        <div class="card-title">Players per zone (live)</div>
+        <div class="card-title">Players per zone (live)<span class="last-update" id="lastUpdate"></span></div>
         <div id="zoneBars" class="zone-bars"></div>
       </div>
       <div class="card grow">
@@ -76,17 +83,19 @@
 
   <section id="tab-announcement" class="tab-panel hidden">
     <div id="announcementView" class="announcement-banner hidden"></div>
-    <section class="card admin-card">
-      <div class="card-title">Announcement</div>
-      <div id="announceStats" class="announce-stats hidden"></div>
-      <label>Title<br><input type="text" id="announceTitle" placeholder="New build available"></label>
-      <label>Message<br><textarea id="announceBody" placeholder="Write your announcement here"></textarea></label>
-      <label>Link (optional)<br><input type="text" id="announceUrl" placeholder="https://example.com"></label>
-      <label>Version (optional)<br><input type="text" id="announceVersion" placeholder="0.2.4"></label>
-      <div class="announce-actions">
-        <button id="announceDelete">Delete active</button>
-        <button id="announcePublish" class="primary">Publish announcement</button>
-      </div>
+    <section class="row">
+      <section class="card grow admin-card">
+        <div class="card-title">Announcement</div>
+        <div id="announceStats" class="announce-stats hidden"></div>
+        <label>Title<br><input type="text" id="announceTitle" placeholder="New build available"></label>
+        <label>Message<br><textarea id="announceBody" placeholder="Write your announcement here"></textarea></label>
+        <label>Link (optional)<br><input type="text" id="announceUrl" placeholder="https://example.com"></label>
+        <label>Version (optional)<br><input type="text" id="announceVersion" placeholder="0.2.4"></label>
+        <div class="announce-actions">
+          <button id="announceDelete">Delete active</button>
+          <button id="announcePublish" class="primary">Publish announcement</button>
+        </div>
+      </section>
     </section>
   </section>
 
@@ -95,7 +104,10 @@
       <div class="card grow" style="overflow:visible">
         <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
           Bug Reports
-          <button id="reportsClear" style="font-size:12px;padding:4px 12px">Clear all</button>
+          <div style="display:flex;gap:8px">
+            <button id="reportsExport" style="font-size:12px;padding:4px 12px">Export CSV</button>
+            <button id="reportsClear" style="font-size:12px;padding:4px 12px">Clear all</button>
+          </div>
         </div>
         <table class="dropoff-table" id="reportsTable" style="width:100%">
           <thead><tr><th>Time</th><th>Error</th><th>Zone</th><th>Version</th><th>Platform</th><th>Player</th></tr></thead>
@@ -106,14 +118,17 @@
   </section>
 
   <section id="tab-settings" class="tab-panel hidden">
-    <div class="card">
-      <div class="card-title">Connection settings</div>
-      <label>Backend base URL<br><input type="text" id="cfgUrl" placeholder="https://your-app.up.railway.app"></label>
-      <label>Admin token<br><input type="password" id="cfgToken" placeholder="ADMIN_TOKEN"></label>
-      <div class="modal-actions" style="justify-content:flex-start; margin-top:18px;">
-        <button id="cfgSave" class="primary">Save & reconnect</button>
+    <section class="row">
+      <div class="card grow">
+        <div class="card-title">Connection settings</div>
+        <label>Backend base URL<br><input type="text" id="cfgUrl" placeholder="https://your-app.up.railway.app"></label>
+        <label>Admin token<br><input type="password" id="cfgToken" placeholder="ADMIN_TOKEN"></label>
+        <div class="modal-actions" style="justify-content:flex-start; margin-top:18px;">
+          <button id="cfgSave" class="primary">Save & reconnect</button>
+        </div>
+        <div class="app-version" id="appVersionLabel"></div>
       </div>
-    </div>
+    </section>
   </section>
 </main>
 
