@@ -562,6 +562,8 @@ function connect() {
     refreshConcurrent();
     checkVersion();
     fetchAnnouncement();
+    fetchToday();
+    checkReportsBadge();
   };
   ws.onmessage = (ev) => {
     try {
@@ -640,7 +642,9 @@ function exportReportsCSV(reports) {
   const a = document.createElement('a');
   a.href = url;
   a.download = `reports-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
@@ -674,6 +678,7 @@ $('reportsClear')?.addEventListener('click', async () => {
       headers: { 'Authorization': 'Bearer ' + cfg.token }
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
+    lastReportCount = 0;
     fetchReports();
   } catch (e) {
     alert('Unable to clear reports. Check URL/token.');
@@ -703,6 +708,7 @@ document.addEventListener('keydown', (e) => {
 
 // ---------- Boot ----------
 if (Notification && Notification.permission === 'default') Notification.requestPermission();
+checkReportsBadge();
 fetchToday();
 $('reportsExport')?.addEventListener('click', async () => {
   try {
