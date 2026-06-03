@@ -19,6 +19,7 @@
     <button id="navLive" class="nav-btn active"><span class="nav-icon">◈</span>Live</button>
     <button id="navAnnouncement" class="nav-btn"><span class="nav-icon">◆</span>Announcement</button>
     <button id="navReports" class="nav-btn"><span class="nav-icon">⚠</span>Reports<span class="nav-badge hidden" id="reportsBadge"></span></button>
+    <button id="navUpdate" class="nav-btn"><span class="nav-icon">⇧</span>Game Update</button>
     <button id="navSettings" class="nav-btn"><span class="nav-icon">⚙</span>Settings</button>
   </nav>
 </aside>
@@ -110,9 +111,39 @@
           </div>
         </div>
         <table class="dropoff-table" id="reportsTable" style="width:100%">
-          <thead><tr><th>Time</th><th>Error</th><th>Zone</th><th>Version</th><th>Platform</th><th>Player</th></tr></thead>
-          <tbody><tr><td colspan="6" style="text-align:center;color:#8a7891">No reports yet</td></tr></tbody>
+          <thead><tr><th>Time</th><th>Error</th><th>Zone</th><th>Version</th><th>Platform</th><th>Player</th><th>Screenshot</th></tr></thead>
+          <tbody><tr><td colspan="7" style="text-align:center;color:#8a7891">No reports yet</td></tr></tbody>
         </table>
+      </div>
+    </section>
+  </section>
+
+  <section id="tab-update" class="tab-panel hidden">
+    <section class="row">
+      <div class="card grow admin-card">
+        <div class="card-title">Current update</div>
+        <div id="updateCurrentInfo" class="update-current-info">
+          <span class="update-none">No update published</span>
+        </div>
+
+        <div class="section-divider"></div>
+
+        <div class="card-title">Publish new update</div>
+        <label>Version<br><input type="text" id="updateVersion" placeholder="0.3.4"></label>
+
+        <div id="updateDropZone" class="update-drop-zone">
+          <div class="drop-zone-icon">⇧</div>
+          <div class="drop-zone-text">Drop plugin files here</div>
+          <div class="drop-zone-sub">or click to browse</div>
+          <input type="file" id="updateFileInput" multiple accept=".js,.json" style="display:none">
+        </div>
+
+        <div id="updateFileList" class="update-file-list"></div>
+
+        <div class="announce-actions">
+          <button id="updateClear">Clear current update</button>
+          <button id="updatePublish" class="primary">Publish update</button>
+        </div>
       </div>
     </section>
   </section>

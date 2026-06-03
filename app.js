@@ -79,8 +79,9 @@ let lastRecord = 0;
 let lastAnnouncementIdNotified = null;
 let currentRange = '24h';
 let prevOnline = null;
-let lastWsTs = null;
-let lastReportCount = null;
+let lastWsTs = 0;
+let lastReportCount = 0;
+let _reportCountInitialized = false;
 let reportsTabOpen = false;
 const RANGE_MS = { '24h': 24*3600*1000, '7d': 7*24*3600*1000, '30d': 30*24*3600*1000 };
 const BUCKET_MS = { '24h': 5*60*1000, '7d': 30*60*1000, '30d': 2*3600*1000 };
@@ -195,37 +196,45 @@ async function api(path) {
 async function fetchReports() {
   const tbody = document.querySelector('#reportsTable tbody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#8a7891">Loading…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#8a7891">Loading…</td></tr>';
   try {
     const data = await api('/v1/reports');
     if (!data) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#8a7891">Not connected — configure settings first.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#8a7891">Not connected — configure settings first.</td></tr>';
       return;
     }
     const reports = data.reports || [];
     if (reports.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#8a7891">No reports yet</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#8a7891">No reports yet</td></tr>';
       return;
     }
     tbody.innerHTML = reports.map(function(r) {
       var time = new Date(r.ts).toLocaleString();
-      var err = String(r.error || '').replace(/</g, '&lt;').slice(0, 120);
+      var errFull = String(r.error || '').replace(/</g, '&lt;');
+      var errShort = errFull.slice(0, 80);
+      var errMore = errFull.length > 80
+        ? '<details style="margin-top:2px"><summary style="font-size:11px;cursor:pointer;color:#8a7891">show more</summary><div style="font-size:12px;margin-top:4px;color:#d4bede">' + errFull + '</div></details>'
+        : '';
       var zone = ZONE_LABELS[r.zone] || r.zone || '—';
       var ver = r.version || '—';
       var plat = r.platform || '—';
       var pid = r.player_id ? r.player_id.slice(0, 8) + '…' : '—';
       var stack = r.stack ? '<details style="margin-top:4px"><summary style="font-size:11px;cursor:pointer;color:#8a7891">stack trace</summary><pre style="font-size:10px;white-space:pre-wrap;margin:4px 0 0;color:#a08aaa;max-width:600px">' + String(r.stack).replace(/</g, '&lt;').slice(0, 2000) + '</pre></details>' : '';
+      var shot = r.screenshot
+        ? '<img src="data:image/jpeg;base64,' + r.screenshot + '" style="max-height:48px;border-radius:4px;cursor:pointer;display:block" onclick="showScreenshot(\'' + r.screenshot + '\')" />'
+        : '<span style="color:#4a3a5a">—</span>';
       return '<tr>'
         + '<td style="white-space:nowrap;font-size:11px;color:#8a7891">' + time + '</td>'
-        + '<td style="color:#d4bede"><div style="font-size:12px">' + err + '</div>' + stack + '</td>'
+        + '<td style="color:#d4bede"><div style="font-size:12px">' + errShort + '</div>' + errMore + stack + '</td>'
         + '<td>' + zone + '</td>'
         + '<td>' + ver + '</td>'
         + '<td>' + plat + '</td>'
         + '<td style="font-size:11px;color:#6a5472">' + pid + '</td>'
+        + '<td>' + shot + '</td>'
         + '</tr>';
     }).join('');
   } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#c87070">Error: ' + e.message + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#c87070">Error: ' + e.message + '</td></tr>';
   }
 }
 
@@ -259,7 +268,7 @@ function showUpdateModal(version, url, notes) {
 
   const overlay = document.createElement('div');
   overlay.id = 'sgUpdateModal';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,4,20,0.92);display:flex;align-items:center;justify-content:center;z-index:9999;';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,4,20,0.92);display:flex;align-items:center;justify-content:center;z-index:10000;';
 
   const box = document.createElement('div');
   box.style.cssText = 'background:#1a0d2e;border:1px solid rgba(234,173,229,0.3);border-radius:12px;padding:32px;width:480px;max-width:90vw;';
@@ -382,11 +391,14 @@ const TAB_NAV_MAP = {
   'tab-live': 'navLive',
   'tab-announcement': 'navAnnouncement',
   'tab-reports': 'navReports',
+  'tab-update': 'navUpdate',
   'tab-settings': 'navSettings'
 };
 
+const ALL_TABS = Object.keys(TAB_NAV_MAP);
+
 function showTab(tabId) {
-  ['tab-live', 'tab-announcement', 'tab-reports', 'tab-settings'].forEach(id => {
+  ALL_TABS.forEach(id => {
     const tab = document.getElementById(id);
     if (tab) tab.classList.add('hidden');
     const nav = document.getElementById(TAB_NAV_MAP[id]);
@@ -410,10 +422,14 @@ function showTab(tabId) {
   if (tabId === 'tab-settings') {
     populateSettings();
   }
+  if (tabId === 'tab-update') {
+    fetchCurrentUpdate();
+  }
 }
 
 async function publishAnnouncement() {
   if (!elAnnounceTitle || !elAnnounceBody) return;
+  if (!cfg.url || !cfg.token) return alert('Configure settings first.');
   const title = elAnnounceTitle.value.trim();
   const body = elAnnounceBody.value.trim();
   if (!title || !body) {
@@ -446,6 +462,7 @@ async function publishAnnouncement() {
 }
 
 async function deleteAnnouncement() {
+  if (!cfg.url || !cfg.token) return alert('Configure settings first.');
   if (!confirm('Delete the current active announcement?')) return;
   try {
     const data = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/announcement', {
@@ -480,9 +497,10 @@ function renderAnnouncement(announcement) {
 
   const actionLink = announcement.url ? `<a href="${announcement.url}" target="_blank">Open announcement</a>` : '';
   const versionTag = announcement.version ? ` <span style="opacity:.75">(${announcement.version})</span>` : '';
+  const _esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   elAnnouncementView.innerHTML = `
-    <div class="announce-title">${announcement.title}${versionTag}</div>
-    <div class="announce-text">${announcement.body}</div>
+    <div class="announce-title">${_esc(announcement.title)}${versionTag}</div>
+    <div class="announce-text">${_esc(announcement.body)}</div>
     <div class="announce-actions">
       ${actionLink}
       <button id="dismissAnnouncement">Got it</button>
@@ -574,6 +592,14 @@ function connect() {
         if (elLU) elLU.textContent = 'updated just now';
         renderLive(msg.live);
       }
+      if (msg.type === 'bug_report') {
+        if (reportsTabOpen) {
+          fetchReports();
+        } else {
+          const badge = $('reportsBadge');
+          if (badge) badge.classList.remove('hidden');
+        }
+      }
     } catch (e) {}
   };
   ws.onclose = () => {
@@ -583,6 +609,22 @@ function connect() {
   };
   ws.onerror = () => { try { ws.close(); } catch (e) {} };
 }
+
+// Live data polling — fallback when WebSocket snapshot is slow (server may batch pushes)
+let _liveEndpointExists = true;
+async function pollLive() {
+  if (!cfg.url || !cfg.token || !_liveEndpointExists) return;
+  // Skip if WebSocket delivered a fresh snapshot recently (within 4s)
+  if (Date.now() - lastWsTs < 4000) return;
+  try {
+    const data = await api('/v1/live');
+    if (data && data.live) renderLive(data.live);
+  } catch (e) {
+    // 404 = endpoint doesn't exist, stop polling to avoid noise
+    if (e.message && e.message.includes('404')) _liveEndpointExists = false;
+  }
+}
+setInterval(pollLive, 3000);
 
 // dropoff refresh every 60s, concurrent every 5min
 setInterval(refreshDropoff, 60 * 1000);
@@ -596,7 +638,7 @@ async function checkReportsBadge() {
   try {
     const data = await api('/v1/reports');
     const count = (data?.reports || []).length;
-    if (lastReportCount === null) { lastReportCount = count; return; }
+    if (!_reportCountInitialized) { _reportCountInitialized = true; lastReportCount = count; return; }
     if (count > lastReportCount) {
       const diff = count - lastReportCount;
       if (!reportsTabOpen) {
@@ -627,14 +669,15 @@ setInterval(fetchToday, 60 * 1000);
 
 // Export CSV
 function exportReportsCSV(reports) {
-  const header = ['Time', 'Error', 'Zone', 'Version', 'Platform', 'Player'];
+  const header = ['Time', 'Error', 'Zone', 'Version', 'Platform', 'Player', 'Screenshot'];
   const rows = reports.map(r => [
     new Date(r.ts).toLocaleString(),
     String(r.error || '').replace(/"/g, '""'),
     r.zone || '',
     r.version || '',
     r.platform || '',
-    r.player_id || ''
+    r.player_id || '',
+    r.screenshot ? '[screenshot attached]' : ''
   ].map(v => `"${v}"`).join(','));
   const csv = [header.join(','), ...rows].join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -646,6 +689,18 @@ function exportReportsCSV(reports) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// Screenshot lightbox
+function showScreenshot(base64) {
+  var existing = document.getElementById('sg-screenshot-lightbox');
+  if (existing) existing.remove();
+  var lb = document.createElement('div');
+  lb.id = 'sg-screenshot-lightbox';
+  lb.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+  lb.innerHTML = '<img src="data:image/jpeg;base64,' + base64 + '" style="max-width:90%;max-height:90%;border-radius:6px;box-shadow:0 0 40px rgba(0,0,0,0.8)">';
+  lb.addEventListener('click', function() { lb.remove(); });
+  document.body.appendChild(lb);
 }
 
 // Last-updated ticker
@@ -669,6 +724,7 @@ document.querySelectorAll('.tab').forEach(btn => {
 elNavLive?.addEventListener('click', () => showTab('tab-live'));
 elNavAnnouncement?.addEventListener('click', () => showTab('tab-announcement'));
 elNavReports?.addEventListener('click', () => showTab('tab-reports'));
+$('navUpdate')?.addEventListener('click', () => showTab('tab-update'));
 elNavSettings?.addEventListener('click', () => showTab('tab-settings'));
 $('reportsClear')?.addEventListener('click', async () => {
   if (!confirm('Clear all bug reports?')) return;
@@ -716,4 +772,136 @@ $('reportsExport')?.addEventListener('click', async () => {
     exportReportsCSV(data?.reports || []);
   } catch (e) { alert('Unable to fetch reports.'); }
 });
+
+// ---------- Game Update ----------
+const _updateStagedFiles = [];
+
+function formatBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+async function fetchCurrentUpdate() {
+  const el = $('updateCurrentInfo');
+  if (!el) return;
+  try {
+    const data = await api('/v1/game/update/admin');
+    const m = data?.manifest;
+    if (!m || !m.version) {
+      el.innerHTML = '<span class="update-none">No update published</span>';
+      return;
+    }
+    let html = '<span class="update-version">v' + m.version + '</span>';
+    if (Array.isArray(m.files)) {
+      for (const f of m.files) {
+        const name = f.filename || f.path?.split('/').pop() || '?';
+        html += '<div class="update-file-entry">' + name + '</div>';
+      }
+    }
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = '<span class="update-none">Unable to fetch</span>';
+  }
+}
+
+function renderStagedFiles() {
+  const el = $('updateFileList');
+  if (!el) return;
+  if (_updateStagedFiles.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = _updateStagedFiles.map((f, i) => `
+    <div class="update-file-item">
+      <span class="file-name">${f.name}</span>
+      <span class="file-size">${formatBytes(f.size)}</span>
+      <button class="file-remove" data-idx="${i}">&times;</button>
+    </div>
+  `).join('');
+  el.querySelectorAll('.file-remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _updateStagedFiles.splice(parseInt(btn.dataset.idx, 10), 1);
+      renderStagedFiles();
+    });
+  });
+}
+
+function addFiles(fileList) {
+  for (const file of fileList) {
+    if (_updateStagedFiles.some(f => f.name === file.name)) continue;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = btoa(new Uint8Array(reader.result).reduce((s, b) => s + String.fromCharCode(b), ''));
+      _updateStagedFiles.push({ name: file.name, size: file.size, content: base64 });
+      renderStagedFiles();
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+// Drop zone
+const dropZone = $('updateDropZone');
+const fileInput = $('updateFileInput');
+if (dropZone && fileInput) {
+  dropZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => { if (fileInput.files.length) addFiles(fileInput.files); fileInput.value = ''; });
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+  });
+}
+
+// Publish
+$('updatePublish')?.addEventListener('click', async () => {
+  if (!cfg.url || !cfg.token) return alert('Configure settings first.');
+  const version = ($('updateVersion')?.value || '').trim();
+  if (!version) return alert('Enter a version number.');
+  if (_updateStagedFiles.length === 0) return alert('Add at least one file.');
+
+  const files = _updateStagedFiles.map(f => ({
+    name: f.name,
+    path: 'www/js/plugins/' + f.name,
+    content: f.content
+  }));
+
+  const btn = $('updatePublish');
+  if (btn) { btn.disabled = true; btn.textContent = 'Publishing...'; }
+
+  try {
+    const res = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/game/update', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version, files })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    _updateStagedFiles.length = 0;
+    renderStagedFiles();
+    if ($('updateVersion')) $('updateVersion').value = '';
+    fetchCurrentUpdate();
+    alert('Update v' + version + ' published!');
+  } catch(e) {
+    alert('Failed to publish: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Publish update'; }
+  }
+});
+
+// Clear
+$('updateClear')?.addEventListener('click', async () => {
+  if (!cfg.url || !cfg.token) return alert('Configure settings first.');
+  if (!confirm('Clear the current game update? Players will no longer receive it.')) return;
+  try {
+    const res = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/game/update', {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + cfg.token }
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    fetchCurrentUpdate();
+    alert('Update cleared.');
+  } catch(e) {
+    alert('Failed to clear: ' + e.message);
+  }
+});
+
 connect();
