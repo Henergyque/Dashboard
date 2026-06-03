@@ -859,11 +859,13 @@ $('updatePublish')?.addEventListener('click', async () => {
   if (!version) return alert('Enter a version number.');
   if (_updateStagedFiles.length === 0) return alert('Add at least one file.');
 
-  const files = _updateStagedFiles.map(f => ({
-    name: f.name,
-    path: 'www/js/plugins/' + f.name,
-    content: f.content
-  }));
+  const files = _updateStagedFiles.map(f => {
+    let dir = 'www/js/plugins/';
+    if (f.name.endsWith('.json')) dir = 'www/data/';
+    else if (/\.(png|jpg|jpeg|gif|webp)$/i.test(f.name)) dir = 'www/img/';
+    else if (/\.(ogg|mp3|wav|m4a)$/i.test(f.name)) dir = 'www/audio/';
+    return { name: f.name, path: dir + f.name, content: f.content };
+  });
 
   const btn = $('updatePublish');
   if (btn) { btn.disabled = true; btn.textContent = 'Publishing...'; }
