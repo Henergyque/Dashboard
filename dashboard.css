@@ -794,11 +794,30 @@ button { font-family: inherit; cursor: pointer; }
   color: #d4bede;
 }
 .update-file-item .file-name {
-  flex: 1;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 180px;
+  flex-shrink: 0;
+}
+.update-file-item .file-path-input {
+  flex: 1;
+  background: rgba(10,7,18,0.5);
+  border: 1px solid rgba(234,173,229,0.1);
+  border-radius: 4px;
+  color: #a08ab0;
+  font-size: 11px;
+  padding: 3px 6px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  outline: none;
+  text-shadow: none;
+  transition: border-color 0.2s;
+  min-width: 0;
+}
+.update-file-item .file-path-input:focus {
+  border-color: rgba(234,173,229,0.35);
+  color: #d4bede;
 }
 .update-file-item .file-size {
   color: #8a7891;

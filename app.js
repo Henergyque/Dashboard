@@ -805,6 +805,15 @@ async function fetchCurrentUpdate() {
   }
 }
 
+function guessDir(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  if (ext === 'js') return 'www/js/plugins/';
+  if (ext === 'json') return 'www/data/';
+  if (['png','jpg','jpeg','gif','webp'].includes(ext)) return 'www/img/';
+  if (['ogg','mp3','wav','m4a'].includes(ext)) return 'www/audio/';
+  return 'www/';
+}
+
 function renderStagedFiles() {
   const el = $('updateFileList');
   if (!el) return;
@@ -812,6 +821,7 @@ function renderStagedFiles() {
   el.innerHTML = _updateStagedFiles.map((f, i) => `
     <div class="update-file-item">
       <span class="file-name">${f.name}</span>
+      <input class="file-path-input" data-idx="${i}" value="${f.dir}" spellcheck="false">
       <span class="file-size">${formatBytes(f.size)}</span>
       <button class="file-remove" data-idx="${i}">&times;</button>
     </div>
@@ -822,15 +832,23 @@ function renderStagedFiles() {
       renderStagedFiles();
     });
   });
+  el.querySelectorAll('.file-path-input').forEach(inp => {
+    inp.addEventListener('change', () => {
+      let v = inp.value.replace(/\\/g, '/').trim();
+      if (v && !v.endsWith('/')) v += '/';
+      _updateStagedFiles[parseInt(inp.dataset.idx, 10)].dir = v;
+    });
+  });
 }
 
 function addFiles(fileList) {
   for (const file of fileList) {
     if (_updateStagedFiles.some(f => f.name === file.name)) continue;
+    const dir = guessDir(file.name);
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = btoa(new Uint8Array(reader.result).reduce((s, b) => s + String.fromCharCode(b), ''));
-      _updateStagedFiles.push({ name: file.name, size: file.size, content: base64 });
+      _updateStagedFiles.push({ name: file.name, dir, size: file.size, content: base64 });
       renderStagedFiles();
     };
     reader.readAsArrayBuffer(file);
@@ -859,13 +877,11 @@ $('updatePublish')?.addEventListener('click', async () => {
   if (!version) return alert('Enter a version number.');
   if (_updateStagedFiles.length === 0) return alert('Add at least one file.');
 
-  const files = _updateStagedFiles.map(f => {
-    let dir = 'www/js/plugins/';
-    if (f.name.endsWith('.json')) dir = 'www/data/';
-    else if (/\.(png|jpg|jpeg|gif|webp)$/i.test(f.name)) dir = 'www/img/';
-    else if (/\.(ogg|mp3|wav|m4a)$/i.test(f.name)) dir = 'www/audio/';
-    return { name: f.name, path: dir + f.name, content: f.content };
-  });
+  const files = _updateStagedFiles.map(f => ({
+    name: f.name,
+    path: f.dir + f.name,
+    content: f.content
+  }));
 
   const btn = $('updatePublish');
   if (btn) { btn.disabled = true; btn.textContent = 'Publishing...'; }
