@@ -835,4 +835,48 @@ button { font-family: inherit; cursor: pointer; }
   opacity: 0.6;
   transition: opacity 0.15s;
 }
+
+/* ===== SHARED ===== */
+.stat-placeholder { opacity: 0.4; }
+
+/* ===== PLATFORM STATS ===== */
+.platform-stats { display: flex; flex-direction: column; gap: 8px; }
+.plat-row { display: flex; align-items: baseline; gap: 10px; }
+.plat-name { color: #8a7891; font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; width: 72px; flex-shrink: 0; }
+.plat-count { color: #d4bede; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.plat-online { color: #7a6485; font-size: 11px; }
+
+/* ===== SESSION STATS ===== */
+.session-stats { display: flex; flex-direction: column; gap: 8px; }
+.session-row { display: flex; justify-content: space-between; align-items: baseline; }
+.session-label { color: #8a7891; font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; }
+.session-value { color: #d4bede; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* ===== ZONE EDITOR ===== */
+.zone-edit-header { display: flex; align-items: center; gap: 8px; }
+.zone-edit-btn {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 3px 10px;
+  opacity: 0.75;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.zone-edit-panel {
+  margin-top: 14px;
+  border-top: 1px solid #2c1a40;
+  padding-top: 14px;
+}
+.zone-edit-actions { margin-top: 10px; display: flex; gap: 8px; justify-content: flex-end; }
+.zone-edit-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.zone-edit-key { color: #6a5472; font-size: 11px; width: 100px; flex-shrink: 0; }
+.zone-edit-input {
+  flex: 1;
+  background: #1a0d2e;
+  color: #d4bede;
+  border: 1px solid #3a2450;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
 .update-file-item .file-remove:hover { opacity: 1; }

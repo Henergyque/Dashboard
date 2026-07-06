@@ -5,7 +5,7 @@ let _nw = null;
 try { _nw = { path: require('path'), fs: require('fs'), os: require('os'), https: require('https'), http: require('http'), cp: require('child_process') }; } catch(e) {}
 
 // ---------- Zone display names + map names (mirrors SG_Telemetry.js + MapInfos.json) ----------
-const ZONE_LABELS = {
+let ZONE_LABELS = {
   intro: 'Intro / Maison',
   jeu1: 'Trial 1',
   jeu2_hub: 'Trial 2 — Hub',
@@ -83,8 +83,20 @@ let lastWsTs = 0;
 let lastReportCount = 0;
 let _reportCountInitialized = false;
 let reportsTabOpen = false;
+let lastLiveSnapshot = null;
 const RANGE_MS = { '24h': 24*3600*1000, '7d': 7*24*3600*1000, '30d': 30*24*3600*1000 };
 const BUCKET_MS = { '24h': 5*60*1000, '7d': 30*60*1000, '30d': 2*3600*1000 };
+
+// ---------- Helpers ----------
+function msToHuman(ms) {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}h ${m}min`;
+  if (m > 0) return `${m}min ${sec}s`;
+  return `${sec}s`;
+}
 
 // ---------- Chart ----------
 const chartCtx = $('concurrentChart').getContext('2d');
@@ -183,6 +195,32 @@ function renderConcurrent(points) {
   chart.update('none');
 }
 
+function renderPlatforms(data) {
+  const el = $('platformStats');
+  if (!el || !data) return;
+  const total = data.total || {};
+  const online = data.online || {};
+  const pcTotal = (total.win32 || 0) + (total.linux || 0) + (total.darwin || 0);
+  const androidTotal = total.android || 0;
+  const pcOnline = (online.win32 || 0) + (online.linux || 0) + (online.darwin || 0);
+  const androidOnline = online.android || 0;
+  const row = (name, n, o) =>
+    `<div class="plat-row"><span class="plat-name">${name}</span><span class="plat-count">${n}</span><span class="plat-online">${o > 0 ? ` (${o} live)` : ''}</span></div>`;
+  el.innerHTML = row('PC', pcTotal, pcOnline) + row('Android', androidTotal, androidOnline);
+}
+
+function renderSessionStats(data) {
+  const el = $('sessionStats');
+  if (!el || !data) return;
+  if (!data.total_sessions) { el.innerHTML = '<span class="stat-placeholder">Aucune session complète</span>'; return; }
+  const statRow = (label, val) =>
+    `<div class="session-row"><span class="session-label">${label}</span><span class="session-value">${val}</span></div>`;
+  el.innerHTML =
+    statRow('Durée moyenne', msToHuman(data.avg_ms)) +
+    statRow('Temps total cumulé', msToHuman(data.total_ms)) +
+    statRow('Sessions tracées', data.total_sessions.toLocaleString());
+}
+
 // ---------- API ----------
 async function api(path) {
   if (!cfg.url || !cfg.token) return null;
@@ -236,6 +274,19 @@ async function fetchReports() {
   } catch (e) {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#c87070">Error: ' + e.message + '</td></tr>';
   }
+}
+
+async function fetchZoneLabels() {
+  try {
+    const data = await api('/v1/admin/zones');
+    if (data?.labels) ZONE_LABELS = Object.assign(ZONE_LABELS, data.labels);
+  } catch(e) { /* ignore */ }
+}
+async function fetchPlatforms() {
+  try { renderPlatforms(await api('/v1/stats/platforms')); } catch(e) { /* ignore */ }
+}
+async function fetchSessionStats() {
+  try { renderSessionStats(await api('/v1/stats/sessions')); } catch(e) { /* ignore */ }
 }
 
 async function refreshDropoff() {
@@ -582,12 +633,16 @@ function connect() {
     fetchAnnouncement();
     fetchToday();
     checkReportsBadge();
+    fetchZoneLabels();
+    fetchPlatforms();
+    fetchSessionStats();
   };
   ws.onmessage = (ev) => {
     try {
       const msg = JSON.parse(ev.data);
       if (msg.type === 'snapshot') {
         lastWsTs = Date.now();
+        lastLiveSnapshot = msg.live;
         const elLU = $('lastUpdate');
         if (elLU) elLU.textContent = 'updated just now';
         renderLive(msg.live);
@@ -618,7 +673,7 @@ async function pollLive() {
   if (Date.now() - lastWsTs < 4000) return;
   try {
     const data = await api('/v1/live');
-    if (data && data.live) renderLive(data.live);
+    if (data && data.live) { lastLiveSnapshot = data.live; renderLive(data.live); }
   } catch (e) {
     // 404 = endpoint doesn't exist, stop polling to avoid noise
     if (e.message && e.message.includes('404')) _liveEndpointExists = false;
@@ -629,6 +684,8 @@ setInterval(pollLive, 3000);
 // dropoff refresh every 60s, concurrent every 5min
 setInterval(refreshDropoff, 60 * 1000);
 setInterval(refreshConcurrent, 5 * 60 * 1000);
+setInterval(fetchPlatforms, 5 * 1000);
+setInterval(fetchSessionStats, 5 * 1000);
 setInterval(checkVersion, VERSION_CHECK_INTERVAL_MS);
 setInterval(fetchAnnouncement, 5 * 60 * 1000);
 
@@ -749,6 +806,46 @@ $('cfgSave')?.addEventListener('click', () => {
 });
 $('announcePublish')?.addEventListener('click', publishAnnouncement);
 $('announceDelete')?.addEventListener('click', deleteAnnouncement);
+
+// ---------- Zone editor ----------
+$('zoneEditBtn')?.addEventListener('click', () => {
+  const panel = $('zoneEditPanel');
+  const fields = $('zoneEditFields');
+  if (!panel || !fields) return;
+  if (!panel.classList.contains('hidden')) { panel.classList.add('hidden'); return; }
+  fields.innerHTML = ZONE_ORDER.map(k =>
+    `<div class="zone-edit-row">
+      <span class="zone-edit-key">${k}</span>
+      <input type="text" class="zone-edit-input" data-zone="${k}" value="${(ZONE_LABELS[k] || k).replace(/"/g, '&quot;')}">
+    </div>`
+  ).join('');
+  panel.classList.remove('hidden');
+});
+
+$('zoneEditCancel')?.addEventListener('click', () => {
+  $('zoneEditPanel')?.classList.add('hidden');
+});
+
+$('zoneEditSave')?.addEventListener('click', async () => {
+  if (!cfg.url || !cfg.token) return alert('Configure settings first.');
+  const inputs = $('zoneEditPanel')?.querySelectorAll('input[data-zone]') || [];
+  const labels = {};
+  for (const inp of inputs) labels[inp.dataset.zone] = inp.value.trim();
+  try {
+    const res = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/admin/zones', {
+      method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(labels)
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    ZONE_LABELS = Object.assign(ZONE_LABELS, json.labels);
+    $('zoneEditPanel')?.classList.add('hidden');
+    if (lastLiveSnapshot) renderLive(lastLiveSnapshot);
+  } catch(e) {
+    alert('Échec de la sauvegarde : ' + e.message);
+  }
+});
 
 // ---------- Fullscreen (F11) ----------
 document.addEventListener('keydown', (e) => {

@@ -52,8 +52,29 @@
 
     <section class="row">
       <div class="card grow">
-        <div class="card-title">Players per zone (live)<span class="last-update" id="lastUpdate"></span></div>
+        <div class="card-title">Plateformes</div>
+        <div id="platformStats" class="platform-stats"><span class="stat-placeholder">—</span></div>
+      </div>
+      <div class="card grow">
+        <div class="card-title">Durée de partie</div>
+        <div id="sessionStats" class="session-stats"><span class="stat-placeholder">—</span></div>
+      </div>
+    </section>
+
+    <section class="row">
+      <div class="card grow">
+        <div class="card-title zone-edit-header">
+          Players per zone (live)<span class="last-update" id="lastUpdate"></span>
+          <button type="button" id="zoneEditBtn" class="zone-edit-btn">⚙ Zones</button>
+        </div>
         <div id="zoneBars" class="zone-bars"></div>
+        <div id="zoneEditPanel" class="zone-edit-panel hidden">
+          <div id="zoneEditFields"></div>
+          <div class="zone-edit-actions">
+            <button type="button" id="zoneEditCancel">Annuler</button>
+            <button type="button" id="zoneEditSave" class="primary">Sauvegarder</button>
+          </div>
+        </div>
       </div>
       <div class="card grow">
         <div class="card-title">Top drop-off zones (24h)</div>
