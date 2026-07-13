@@ -2,189 +2,315 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>SuccubusStats — Live</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SuccubusStats — Admin Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Cinzel:wght@600;700&family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
-<div class="sidebar-particles"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
-<aside class="sidebar">
-  <div class="brand">
-    <img src="succubus.png" class="brand-banner" alt="Succubus">
-    <div class="brand-title">SuccubusStats</div>
-    <div class="brand-sub">live owner dashboard</div>
-  </div>
-  <div class="status" id="connStatus"><span class="dot"></span><span class="status-text">connecting…</span></div>
-  <div class="update-pill hidden" id="updateNotice"></div>
-  <nav class="sidebar-nav">
-    <button id="navLive" class="nav-btn active"><span class="nav-icon">◈</span>Live</button>
-    <button id="navAnnouncement" class="nav-btn"><span class="nav-icon">◆</span>Announcement</button>
-    <button id="navReports" class="nav-btn"><span class="nav-icon">⚠</span>Reports<span class="nav-badge hidden" id="reportsBadge"></span></button>
-    <button id="navUpdate" class="nav-btn"><span class="nav-icon">⇧</span>Game Update</button>
-    <button id="navSettings" class="nav-btn"><span class="nav-icon">⚙</span>Settings</button>
-  </nav>
-</aside>
+<div class="app">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+  <canvas id="particles"></canvas>
 
-<main class="main">
-  <section id="tab-live" class="tab-panel">
-    <section class="row">
-      <div class="card big-counter">
-        <div class="card-title">Players online</div>
-        <div class="big-number" id="onlineCount">—</div>
-        <div class="big-delta" id="onlineDelta"></div>
-        <div class="card-sub" id="onlineSub"></div>
+  <!-- ═══════════ SIDEBAR ═══════════ -->
+  <aside class="sidebar">
+    <div class="sb-logo">
+      <div class="sb-mascot"></div>
+      <div style="min-width:0">
+        <div class="sb-title">Succubus<br>Stats</div>
+        <div class="sb-sub">Admin Console</div>
       </div>
-      <div class="card big-counter">
-        <div class="card-title">Record simultaneous</div>
-        <div class="big-number" id="recordCount">—</div>
-        <div class="card-sub">all time</div>
-      </div>
-      <div class="card big-counter">
-        <div class="card-title">Unique players</div>
-        <div class="big-number" id="uniqueCount">—</div>
-        <div class="card-sub">all time</div>
-      </div>
-      <div class="card big-counter">
-        <div class="card-title">Players today</div>
-        <div class="big-number" id="todayCount">—</div>
-        <div class="card-sub">since midnight</div>
-      </div>
-    </section>
+    </div>
 
-    <section class="row">
-      <div class="card grow">
-        <div class="card-title">Plateformes</div>
-        <div id="platformStats" class="platform-stats"><span class="stat-placeholder">—</span></div>
+    <div class="sb-link" id="linkStatus">
+      <div class="radar"><span class="r1"></span><span class="r2"></span><span class="core"></span></div>
+      <div style="flex:1;min-width:0">
+        <div class="sb-link-label" id="linkLabel">LINKING…</div>
+        <div class="sb-link-sub"><span id="relayName">—</span> · <span style="color:#cdb8d8"><span id="latency">—</span>ms</span></div>
       </div>
-      <div class="card grow">
-        <div class="card-title">Durée de partie</div>
-        <div id="sessionStats" class="session-stats"><span class="stat-placeholder">—</span></div>
-      </div>
-    </section>
+      <div class="sb-link-up" id="linkUpBadge">up<br><span id="linkUptime" style="color:#b89bc4">—</span></div>
+    </div>
 
-    <section class="row">
-      <div class="card grow">
-        <div class="card-title zone-edit-header">
-          Players per zone (live)<span class="last-update" id="lastUpdate"></span>
-          <button type="button" id="zoneEditBtn" class="zone-edit-btn">⚙ Zones</button>
-        </div>
-        <div id="zoneBars" class="zone-bars"></div>
-        <div id="zoneEditPanel" class="zone-edit-panel hidden">
-          <div id="zoneEditFields"></div>
-          <div class="zone-edit-actions">
-            <button type="button" id="zoneEditCancel">Annuler</button>
-            <button type="button" id="zoneEditSave" class="primary">Sauvegarder</button>
+    <nav class="sb-nav">
+      <div class="nav-item active" data-tab="live">
+        <span class="marker"></span>
+        <svg width="17" height="17" viewBox="0 0 17 17" style="flex:none"><circle cx="8.5" cy="8.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.4" opacity="0.55"></circle><circle cx="8.5" cy="8.5" r="2.6" fill="currentColor" style="animation:navPulse 2s ease-in-out infinite"></circle></svg>
+        <span class="nav-label">Live</span>
+        <span class="nav-badge green" id="navOnline">—</span>
+      </div>
+      <div class="nav-item" data-tab="announce">
+        <span class="marker"></span>
+        <svg width="17" height="17" viewBox="0 0 17 17" style="flex:none"><path d="M2.5 6.5 L11 3 V14 L2.5 10.5 Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path><path d="M12.5 6 Q14.5 8.5 12.5 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg>
+        <span class="nav-label">Announcement</span>
+      </div>
+      <div class="nav-item" data-tab="reports">
+        <span class="marker"></span>
+        <svg width="17" height="17" viewBox="0 0 17 17" style="flex:none"><rect x="2.5" y="8" width="2.8" height="6" rx="1" fill="currentColor" opacity="0.75"></rect><rect x="7.1" y="4.5" width="2.8" height="9.5" rx="1" fill="currentColor"></rect><rect x="11.7" y="6.5" width="2.8" height="7.5" rx="1" fill="currentColor" opacity="0.55"></rect></svg>
+        <span class="nav-label">Reports</span>
+        <span class="nav-badge red hidden" id="navReports">0</span>
+      </div>
+      <div class="nav-item" data-tab="update">
+        <span class="marker"></span>
+        <svg width="17" height="17" viewBox="0 0 17 17" style="flex:none"><path d="M8.5 13.5 V4.5 M4.5 8.5 L8.5 4 L12.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M3 15 H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"></path></svg>
+        <span class="nav-label">Game Update</span>
+      </div>
+      <div class="nav-item" data-tab="settings">
+        <span class="marker"></span>
+        <svg width="17" height="17" viewBox="0 0 17 17" style="flex:none"><path d="M2.5 5 H14.5 M2.5 12 H14.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.6"></path><circle cx="10.5" cy="5" r="2.1" fill="none" stroke="currentColor" stroke-width="1.4"></circle><circle cx="6" cy="12" r="2.1" fill="none" stroke="currentColor" stroke-width="1.4"></circle></svg>
+        <span class="nav-label">Settings</span>
+      </div>
+    </nav>
+
+    <div style="flex:1"></div>
+
+    <div class="sb-footer">
+      <div class="rune"></div>
+      <div class="sb-footer-txt">build <span style="color:#b89bc4" id="buildVer">—</span><br>admin: <span style="color:#e9b95f">Henergyque</span></div>
+    </div>
+  </aside>
+
+  <!-- ═══════════ MAIN ═══════════ -->
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="tabTitle">Live</h1>
+        <div class="topbar-sub" id="tabSubtitle">real-time player activity</div>
+      </div>
+      <div style="flex:1"></div>
+      <div style="text-align:right">
+        <div class="clock" id="clock">—:—:—</div>
+        <div class="datestr" id="dateStr"></div>
+      </div>
+    </header>
+
+    <div class="veil" id="veil"><div></div></div>
+
+    <div class="content">
+
+      <!-- ════════ LIVE ════════ -->
+      <section class="tab-panel active" id="tab-live">
+        <div class="grid12">
+          <div class="col12" style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px" id="statCards"></div>
+
+          <!-- concurrent chart -->
+          <div class="col8 glass" style="padding:22px 24px 14px">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:8px">
+              <div>
+                <div class="sect-title">CONCURRENT PLAYERS</div>
+                <div class="sect-sub">players connected, in real time</div>
+              </div>
+              <div style="flex:1"></div>
+              <div class="pill-group" id="ccPills">
+                <button class="pill active-cc" data-r="24h">24h</button>
+                <button class="pill" data-r="7d">7d</button>
+                <button class="pill" data-r="30d">30d</button>
+              </div>
+            </div>
+            <div id="ccChart"></div>
           </div>
-        </div>
-      </div>
-      <div class="card grow">
-        <div class="card-title">Top drop-off zones (24h)</div>
-        <table class="dropoff-table" id="dropoffZones">
-          <thead><tr><th>Zone</th><th>Quits</th></tr></thead>
-          <tbody></tbody>
-        </table>
-        <div class="card-title" style="margin-top:14px">Top drop-off maps (24h)</div>
-        <table class="dropoff-table" id="dropoffMaps">
-          <thead><tr><th>Map</th><th>Quits</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
 
-    <section class="row">
-      <div class="card grow">
-        <div class="card-title">Concurrent players</div>
-        <div class="range-tabs">
-          <button class="tab active" data-range="24h">24h</button>
-          <button class="tab" data-range="7d">7d</button>
-          <button class="tab" data-range="30d">30d</button>
-        </div>
-        <div class="chart-wrap"><canvas id="concurrentChart"></canvas></div>
-      </div>
-    </section>
-  </section>
+          <!-- platforms + sessions -->
+          <div class="col4 glass" style="padding:22px 24px;display:flex;flex-direction:column">
+            <div class="sect-title">PLATFORMS</div>
+            <div style="display:flex;height:12px;border-radius:8px;overflow:hidden;margin-top:14px;border:1px solid rgba(255,255,255,.08)" id="platformBar"></div>
+            <div style="display:flex;flex-direction:column;gap:9px;margin-top:14px" id="platformList"></div>
+            <div class="divider" style="margin:16px 0 14px"></div>
+            <div class="mini-label">SESSION DURATION</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px">
+              <div><div style="font-size:21px;font-weight:600;color:#ffb3cd" id="sessAvg">—</div><div style="font-size:10px;color:#9d84ad;margin-top:3px;letter-spacing:1px">AVERAGE</div></div>
+              <div><div style="font-size:21px;font-weight:600;color:#c9a2ff" id="sessMedian">—</div><div style="font-size:10px;color:#9d84ad;margin-top:3px;letter-spacing:1px">MEDIAN</div></div>
+              <div><div style="font-size:21px;font-weight:600;color:#ffd98a" id="sessLongest">—</div><div style="font-size:10px;color:#9d84ad;margin-top:3px;letter-spacing:1px">LONGEST</div></div>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)">
+              <span style="font-size:10px;letter-spacing:1.6px;color:#9d84ad">TOTAL PLAY TIME</span>
+              <span style="flex:1"></span>
+              <span id="sessTotal" style="font-size:19px;font-weight:600;color:#7dffc4;font-variant-numeric:tabular-nums">—</span>
+            </div>
+          </div>
 
-  <section id="tab-announcement" class="tab-panel hidden">
-    <div id="announcementView" class="announcement-banner hidden"></div>
-    <section class="row">
-      <section class="card grow admin-card">
-        <div class="card-title">Announcement</div>
-        <div id="announceStats" class="announce-stats hidden"></div>
-        <label>Title<br><input type="text" id="announceTitle" placeholder="New build available"></label>
-        <label>Message<br><textarea id="announceBody" placeholder="Write your announcement here"></textarea></label>
-        <label>Link (optional)<br><input type="text" id="announceUrl" placeholder="https://example.com"></label>
-        <label>Version (optional)<br><input type="text" id="announceVersion" placeholder="0.2.4"></label>
-        <div class="announce-actions">
-          <button id="announceDelete">Delete active</button>
-          <button id="announcePublish" class="primary">Publish announcement</button>
+          <!-- zones -->
+          <div class="col4 glass" style="padding:22px 24px">
+            <div style="display:flex;align-items:center;margin-bottom:16px">
+              <div>
+                <div class="sect-title">LIVE PLAYERS PER ZONE</div>
+                <div class="sect-sub"><span id="zoneTotal">0</span> players across <span id="zoneCount">0</span> zones</div>
+              </div>
+              <div style="flex:1"></div>
+              <button class="zone-edit-btn" id="zoneEditBtn">EDIT ZONES</button>
+            </div>
+            <div id="zoneList" style="display:flex;flex-direction:column;gap:13px"></div>
+            <div id="zoneEditPanel" class="hidden" style="display:flex;flex-direction:column;gap:9px"></div>
+          </div>
+
+          <!-- regions & languages -->
+          <div class="col4 glass" style="padding:22px 24px">
+            <div class="sect-title">REGIONS</div>
+            <div style="display:flex;flex-direction:column;gap:11px;margin-top:15px" id="regionList"></div>
+            <div class="divider" style="margin:18px 0 14px"></div>
+            <div class="mini-label">LANGUAGES</div>
+            <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:12px" id="langList"></div>
+          </div>
+
+          <!-- drop-off -->
+          <div class="col4 glass" style="padding:22px 24px">
+            <div class="sect-title pink">TOP DROP-OFF ZONES <span style="font-family:'Sora',sans-serif;font-size:10px;color:#9d84ad;letter-spacing:1px;font-weight:400">· 24H</span></div>
+            <div style="display:flex;flex-direction:column;margin-top:10px" id="dropZones"></div>
+            <div class="sect-title pink" style="margin-top:20px">TOP DROP-OFF MAPS <span style="font-family:'Sora',sans-serif;font-size:10px;color:#9d84ad;letter-spacing:1px;font-weight:400">· 24H</span></div>
+            <div style="display:flex;flex-direction:column;margin-top:10px" id="dropMaps"></div>
+          </div>
+
+          <!-- new players chart -->
+          <div class="col12 glass" style="padding:22px 24px 14px">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:8px">
+              <div>
+                <div class="sect-title">NEW PLAYERS PER DAY</div>
+                <div class="sect-sub">first-time players per day</div>
+              </div>
+              <div style="flex:1"></div>
+              <div class="pill-group" id="npPills">
+                <button class="pill active-np" data-r="7">7d</button>
+                <button class="pill" data-r="30">30d</button>
+                <button class="pill" data-r="90">90d</button>
+              </div>
+            </div>
+            <div id="npChart"></div>
+          </div>
         </div>
       </section>
-    </section>
-  </section>
 
-  <section id="tab-reports" class="tab-panel hidden">
-    <section class="row">
-      <div class="card grow" style="overflow:visible">
-        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
-          Bug Reports
-          <div style="display:flex;gap:8px">
-            <button id="reportsExport" style="font-size:12px;padding:4px 12px">Export CSV</button>
-            <button id="reportsClear" style="font-size:12px;padding:4px 12px">Clear all</button>
+      <!-- ════════ ANNOUNCEMENT ════════ -->
+      <section class="tab-panel" id="tab-announce">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+          <div class="glass" style="padding:26px 28px">
+            <div class="sect-title">NEW ANNOUNCEMENT</div>
+            <div class="sect-sub" style="margin-bottom:20px">sent to all players in-game and in the launcher</div>
+
+            <label class="field-label">TITLE</label>
+            <input id="annTitle" class="field" placeholder="New build available">
+            <label class="field-label" style="margin-top:16px">MESSAGE</label>
+            <textarea id="annBody" class="field" rows="5" placeholder="Write your message here…"></textarea>
+            <div style="display:grid;grid-template-columns:1fr 160px;gap:12px;margin-top:16px">
+              <div>
+                <label class="field-label">LINK <span style="color:#6f5a80;letter-spacing:.5px;font-weight:400">(optional)</span></label>
+                <input id="annUrl" class="field" style="font-size:13px" placeholder="https://itch.io/…">
+              </div>
+              <div>
+                <label class="field-label">MIN VERSION</label>
+                <input id="annVersion" class="field" style="font-size:13px" placeholder="0.3.4">
+              </div>
+            </div>
+            <button class="btn-gold" id="annPublish" style="margin-top:22px">PUBLISH<span class="sheen"></span></button>
+            <div id="annToast" class="toast-ok hidden">✦ Announcement sent to all online players.</div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:18px">
+            <div class="gold-panel" style="padding:26px 28px">
+              <div style="position:absolute;top:-60px;right:-60px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,rgba(233,185,95,.18),transparent 65%);pointer-events:none"></div>
+              <div style="font-size:10px;font-weight:700;letter-spacing:2.4px;color:#7dffc4;display:flex;align-items:center;gap:8px"><span style="width:7px;height:7px;border-radius:50%;background:#5fffb2;box-shadow:0 0 8px rgba(95,255,178,.9);animation:navPulse 2s ease-in-out infinite"></span>ACTIVE ANNOUNCEMENT · <span id="activeAgo">none</span></div>
+              <div style="font-family:'Cinzel Decorative',serif;font-weight:700;font-size:20px;color:#ffd98a;margin-top:14px;line-height:1.35;text-shadow:0 0 26px rgba(233,185,95,.5)" id="activeTitle">— no active announcement —</div>
+              <div style="font-size:13px;color:#cdb8d8;line-height:1.7;margin-top:10px" id="activeMessage"></div>
+              <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap" id="activeTags"></div>
+              <div style="margin-top:18px"><button class="btn-red btn-ghost" id="annDelete">DELETE ACTIVE</button></div>
+            </div>
+
+            <div class="glass" style="padding:24px 28px">
+              <div class="sect-title">ANNOUNCEMENT REACH</div>
+              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:18px">
+                <div><div style="font-size:26px;font-weight:600;color:#f6ecf7;font-variant-numeric:tabular-nums" id="reachImpressions">—</div><div style="font-size:10px;letter-spacing:1.4px;color:#9d84ad;margin-top:4px">IMPRESSIONS (VUES)</div></div>
+                <div><div style="font-size:26px;font-weight:600;color:#ffb3cd;font-variant-numeric:tabular-nums" id="reachOnline">—</div><div style="font-size:10px;letter-spacing:1.4px;color:#9d84ad;margin-top:4px">PLAYERS ONLINE NOW</div></div>
+              </div>
+              <div style="font-size:10.5px;color:#6f5a80;margin-top:14px">seen by players in-game and in the launcher</div>
+            </div>
           </div>
         </div>
-        <table class="dropoff-table" id="reportsTable" style="width:100%">
-          <thead><tr><th>Time</th><th>Error</th><th>Zone</th><th>Version</th><th>Platform</th><th>Player</th><th>Screenshot</th></tr></thead>
-          <tbody><tr><td colspan="7" style="text-align:center;color:#8a7891">No reports yet</td></tr></tbody>
-        </table>
-      </div>
-    </section>
-  </section>
+      </section>
 
-  <section id="tab-update" class="tab-panel hidden">
-    <section class="row">
-      <div class="card grow admin-card">
-        <div class="card-title">Current update</div>
-        <div id="updateCurrentInfo" class="update-current-info">
-          <span class="update-none">No update published</span>
+      <!-- ════════ REPORTS ════════ -->
+      <section class="tab-panel" id="tab-reports">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+          <div style="font-size:12.5px;color:#9d84ad"><span style="color:#ff8a97;font-weight:700;font-variant-numeric:tabular-nums" id="reportCount">0</span> error reports</div>
+          <div style="flex:1"></div>
+          <button class="btn-ghost btn-purple" id="reportsExport">EXPORT CSV</button>
+          <button class="btn-ghost btn-red" id="reportsClear">CLEAR ALL</button>
         </div>
-
-        <div class="section-divider"></div>
-
-        <div class="card-title">Publish new update</div>
-        <label>Version<br><input type="text" id="updateVersion" placeholder="0.3.4"></label>
-
-        <div id="updateDropZone" class="update-drop-zone">
-          <div class="drop-zone-icon">⇧</div>
-          <div class="drop-zone-text">Drop plugin files here</div>
-          <div class="drop-zone-sub">or click to browse</div>
-          <input type="file" id="updateFileInput" multiple style="display:none">
+        <div id="reportsWrap" class="glass" style="border-radius:18px;overflow:hidden">
+          <div class="rep-head"><span>TIME</span><span>ERROR</span><span>ZONE</span><span>VER</span><span>PLATFORM</span><span>PLAYER</span><span style="text-align:right">PROOF</span></div>
+          <div id="reportsTable"></div>
         </div>
-
-        <div id="updateFileList" class="update-file-list"></div>
-
-        <div class="announce-actions">
-          <button id="updateClear">Clear current update</button>
-          <button id="updatePublish" class="primary">Publish update</button>
+        <div id="reportsEmpty" class="empty-ledger hidden">
+          <div class="rune" style="margin:0 auto"></div>
+          <div style="font-family:'Cinzel',serif;font-size:16px;letter-spacing:2px;color:#e9b95f;margin-top:18px">ALL CLEAR</div>
+          <div style="font-size:12px;color:#9d84ad;margin-top:8px">No reports. Everything is running smoothly.</div>
         </div>
-      </div>
-    </section>
-  </section>
+      </section>
 
-  <section id="tab-settings" class="tab-panel hidden">
-    <section class="row">
-      <div class="card grow">
-        <div class="card-title">Connection settings</div>
-        <label>Backend base URL<br><input type="text" id="cfgUrl" placeholder="https://your-app.up.railway.app"></label>
-        <label>Admin token<br><input type="password" id="cfgToken" placeholder="ADMIN_TOKEN"></label>
-        <div class="modal-actions" style="justify-content:flex-start; margin-top:18px;">
-          <button id="cfgSave" class="primary">Save & reconnect</button>
+      <!-- ════════ GAME UPDATE ════════ -->
+      <section class="tab-panel" id="tab-update">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+          <div class="gold-panel" style="padding:26px 28px">
+            <div style="position:absolute;bottom:-70px;left:-70px;width:240px;height:240px;border-radius:50%;background:radial-gradient(circle,rgba(255,61,129,.14),transparent 65%);pointer-events:none"></div>
+            <div style="font-size:10px;font-weight:700;letter-spacing:2.4px;color:#7dffc4;display:flex;align-items:center;gap:8px"><span style="width:7px;height:7px;border-radius:50%;background:#5fffb2;box-shadow:0 0 8px rgba(95,255,178,.9);animation:navPulse 2s ease-in-out infinite"></span>LIVE VERSION</div>
+            <div style="display:flex;align-items:baseline;gap:14px;margin-top:16px">
+              <div style="font-size:44px;font-weight:600;font-variant-numeric:tabular-nums;background:linear-gradient(180deg,#fff 20%,#ffd98a);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent" id="curUpdVersion">—</div>
+              <div style="font-family:'Cinzel Decorative',serif;font-size:16px;color:#ff9dbe" id="curUpdName">no update staged</div>
+            </div>
+            <div class="divider" style="margin:20px 0 16px"></div>
+            <div class="mini-label" style="margin-bottom:12px">STAGED FILES</div>
+            <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:#cdb8d8;line-height:1.6" id="curUpdFiles"><div style="color:#6f5a80">— none —</div></div>
+            <div style="margin-top:18px"><button class="btn-red btn-ghost" id="updClear">CLEAR CURRENT UPDATE</button></div>
+          </div>
+
+          <div class="glass" style="padding:26px 28px">
+            <div class="sect-title">PUBLISH NEW UPDATE</div>
+            <div class="sect-sub" style="margin-bottom:20px">players will receive this update on next launch</div>
+            <label class="field-label">VERSION</label>
+            <input id="updVersion" class="field" placeholder="0.3.4">
+            <label class="field-label" style="margin-top:16px">BUILD FILES</label>
+            <label class="dropzone" id="updDropzone" for="updFileInput">
+              <div style="width:12px;height:12px;transform:rotate(45deg);background:linear-gradient(135deg,#e9b95f,#ff3d81);box-shadow:0 0 14px rgba(255,61,129,.7);animation:runeSpin 9s linear infinite"></div>
+              <div style="font-size:13px;color:#e9d5f0;margin-top:10px;font-weight:600" id="dropTitle">Drag the plugin files here</div>
+              <div style="font-size:11px;color:#9d84ad" id="dropSub">or click to browse · .js .json .png …</div>
+            </label>
+            <input id="updFileInput" type="file" multiple class="hidden">
+            <div id="updFileList"></div>
+            <button class="btn-gold" id="updPublish" style="margin-top:20px;letter-spacing:2.4px">DEPLOY UPDATE<span class="sheen"></span></button>
+            <div id="updToast" class="toast-ok hidden"></div>
+          </div>
         </div>
-        <div class="app-version" id="appVersionLabel"></div>
-      </div>
-    </section>
-  </section>
-</main>
+      </section>
 
-<script src="vendor/chart.umd.min.js"></script>
+      <!-- ════════ SETTINGS ════════ -->
+      <section class="tab-panel" id="tab-settings">
+        <div style="max-width:640px">
+          <div class="glass" style="padding:26px 28px">
+            <div class="sect-title">CONNECTION</div>
+            <div class="sect-sub" style="margin-bottom:22px">server URL and authentication</div>
+            <label class="field-label">BACKEND URL</label>
+            <input id="cfgUrl" class="field mono" style="font-size:13px" placeholder="https://your-app.up.railway.app">
+            <label class="field-label" style="margin-top:18px">ADMIN TOKEN</label>
+            <div style="display:flex;gap:10px">
+              <input id="cfgToken" type="password" class="field mono" style="font-size:13px;letter-spacing:1px" placeholder="ADMIN_TOKEN">
+              <button class="btn-purple" id="tokenToggle" style="flex:none;padding:0 16px;border-radius:11px;cursor:pointer;font-size:11px;font-weight:700;letter-spacing:1px">REVEAL</button>
+            </div>
+            <div style="font-size:10.5px;color:#6f5a80;margin-top:8px">the token is stored locally on this machine only</div>
+            <div style="display:flex;gap:12px;margin-top:26px">
+              <button class="btn-ghost btn-purple" id="cfgTest" style="letter-spacing:1.6px">TEST LINK</button>
+              <button class="btn-gold" id="cfgSave" style="flex:1;padding:12px;letter-spacing:2px">SAVE<span class="sheen"></span></button>
+            </div>
+            <div class="sb-footer-txt" id="appVersionLabel" style="margin-top:20px"></div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<div class="update-pill hidden" id="updateNotice"></div>
 <script src="app.js"></script>
 </body>
 </html>

@@ -1,34 +1,23 @@
 'use strict';
 
+/* ===================================================================
+   SuccubusStats — Nether Ops Console
+   Reskin fidèle de la maquette, branché sur le vrai backend telemetry.
+   Toute la logique (WebSocket, endpoints, auto-update, packaging NW.js)
+   est conservée ; seul le rendu change.
+=================================================================== */
+
 // ---------- NW.js modules (desktop only) ----------
 let _nw = null;
-try { _nw = { path: require('path'), fs: require('fs'), os: require('os'), https: require('https'), http: require('http'), cp: require('child_process') }; } catch(e) {}
+try { _nw = { path: require('path'), fs: require('fs'), os: require('os'), https: require('https'), http: require('http'), cp: require('child_process') }; } catch (e) {}
 
-// ---------- Zone display names + map names (mirrors SG_Telemetry.js + MapInfos.json) ----------
+// ---------- Zone / map labels ----------
 let ZONE_LABELS = {
-  intro: 'Intro / Maison',
-  jeu1: 'Trial 1',
-  jeu2_hub: 'Trial 2 — Hub',
-  jeu2_gauche: 'Trial 2 — Left',
-  jeu2_droite: 'Trial 2 — Right',
-  jeu2_arbre: 'Trial 2 — Tree',
-  endgame: 'Endgame',
-  speciales: 'Special rooms',
-  unknown: 'Unknown'
+  intro: 'Intro / Maison', jeu1: 'Trial 1', jeu2_hub: 'Trial 2 — Hub',
+  jeu2_gauche: 'Trial 2 — Left', jeu2_droite: 'Trial 2 — Right', jeu2_arbre: 'Trial 2 — Tree',
+  endgame: 'Endgame', speciales: 'Special rooms', unknown: 'Unknown'
 };
 const ZONE_ORDER = ['intro','jeu1','jeu2_hub','jeu2_gauche','jeu2_droite','jeu2_arbre','endgame','speciales','unknown'];
-const APP_VERSION = (function() {
-  try {
-    if (_nw) {
-      const vf = _nw.path.join(_nw.path.dirname(process.execPath), 'package.nw', '.sg_version');
-      if (_nw.fs.existsSync(vf)) return _nw.fs.readFileSync(vf, 'utf8').trim();
-    }
-  } catch(e) {}
-  try { return require('./package.json').version; } catch(e) {}
-  return '1.0.0';
-})();
-const VERSION_CHECK_INTERVAL_MS = 60 * 60 * 1000;
-
 const MAP_NAMES = {
   1:'Introduction',2:'Maison MC',3:'Chambre Succube - 1',4:'Recollection Room',5:'Chambre Succube - 3',
   6:'Jeu 1-1',7:'Jeu 1-2',8:'Jeu 1-4',9:'Jeu 1-3',10:'Jeu 1-5',11:'Jeu 1-6',12:'Jeu 1-7',
@@ -40,868 +29,569 @@ const MAP_NAMES = {
 };
 const mapLabel = (id) => MAP_NAMES[id] ? `${MAP_NAMES[id]} (#${id})` : `Map ${id}`;
 
-// ---------- Config (stored locally) ----------
-function loadCfg() {
-  try { return JSON.parse(localStorage.getItem('cfg') || '{}'); } catch (e) { return {}; }
-}
+const LANG_NAMES = {
+  en:'Anglais', fr:'Français', ru:'Russe', ko:'Coréen', ja:'Japonais', zh:'Chinois',
+  es:'Espagnol', de:'Allemand', pt:'Portugais', it:'Italien', nl:'Néerlandais', pl:'Polonais',
+  tr:'Turc', ar:'Arabe', hi:'Hindi', id:'Indonésien', th:'Thaï', vi:'Vietnamien', uk:'Ukrainien',
+  cs:'Tchèque', sv:'Suédois', ro:'Roumain', hu:'Hongrois', el:'Grec', fi:'Finnois', da:'Danois',
+  no:'Norvégien', nb:'Norvégien', fa:'Persan', hr:'Croate', ms:'Malais', sl:'Slovène', sk:'Slovaque',
+  bg:'Bulgare', sr:'Serbe', he:'Hébreu', ca:'Catalan', et:'Estonien', lv:'Letton', lt:'Lituanien',
+  is:'Islandais', ga:'Irlandais', af:'Afrikaans', bn:'Bengali', ta:'Tamoul', ur:'Ourdou',
+  tl:'Philippin', fil:'Philippin', unknown:'Inconnu'
+};
+
+const PLATFORMS = [
+  { key:'win32',   name:'Windows', color:'linear-gradient(180deg,#ff5e97,#d92665)' },
+  { key:'android', name:'Android', color:'linear-gradient(180deg,#7dffc4,#27b578)' },
+  { key:'darwin',  name:'macOS',   color:'linear-gradient(180deg,#ffd98a,#d99b2f)' },
+  { key:'linux',   name:'Linux',   color:'linear-gradient(180deg,#b98aff,#7c3aed)' }
+];
+
+const APP_VERSION = (function () {
+  try {
+    if (_nw) {
+      const vf = _nw.path.join(_nw.path.dirname(process.execPath), 'package.nw', '.sg_version');
+      if (_nw.fs.existsSync(vf)) return _nw.fs.readFileSync(vf, 'utf8').trim();
+    }
+  } catch (e) {}
+  try { return require('./package.json').version; } catch (e) {}
+  return '1.0.0';
+})();
+const VERSION_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+
+// ---------- Config ----------
+function loadCfg() { try { return JSON.parse(localStorage.getItem('cfg') || '{}'); } catch (e) { return {}; } }
 function saveCfg(c) { localStorage.setItem('cfg', JSON.stringify(c)); }
 let cfg = loadCfg();
 
-// ---------- DOM refs ----------
+// ---------- DOM helpers ----------
 const $ = (id) => document.getElementById(id);
-const elOnline = $('onlineCount');
-const elOnlineSub = $('onlineSub');
-const elRecord = $('recordCount');
-const elUnique = $('uniqueCount');
-const elToday = $('todayCount');
-const elZoneBars = $('zoneBars');
-const elConn = $('connStatus');
-const elUpdateNotice = $('updateNotice');
-const elAnnouncementView = $('announcementView');
-const elAnnounceTitle = $('announceTitle');
-const elAnnounceBody = $('announceBody');
-const elAnnounceUrl = $('announceUrl');
-const elAnnounceVersion = $('announceVersion');
-const elNavLive = $('navLive');
-const elNavAnnouncement = $('navAnnouncement');
-const elNavReports = $('navReports');
-const elNavSettings = $('navSettings');
-const elDropZones = $('dropoffZones').querySelector('tbody');
-const elDropMaps = $('dropoffMaps').querySelector('tbody');
-
-const DISMISSED_ANNOUNCEMENT_KEY = 'dismissedAnnouncementId';
-let currentAnnouncementData = null;
+const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const fmtN = (n) => (n | 0).toLocaleString('en-US');
+function durShort(ms) {
+  const s = Math.floor((ms || 0) / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  if (h > 0) return m > 0 ? `${h}h${String(m).padStart(2,'0')}` : `${h}h`;
+  if (m > 0) return `${m}m`;
+  return `${s}s`;
+}
 
 // ---------- State ----------
-let ws = null;
-let reconnectTimer = null;
-let lastRecord = 0;
-let lastAnnouncementIdNotified = null;
-let currentRange = '24h';
-let prevOnline = null;
-let lastWsTs = 0;
-let lastReportCount = 0;
-let _reportCountInitialized = false;
-let reportsTabOpen = false;
+let ws = null, reconnectTimer = null;
+let lastRecord = 0, lastWsTs = 0;
 let lastLiveSnapshot = null;
+let currentTab = 'live';
+let ccRange = '24h', npRange = 7;
+let zoneEditMode = false;
+let lastReportCount = 0, _reportCountInitialized = false;
+let currentAnnouncementData = null;
+const DISMISSED_ANNOUNCEMENT_KEY = 'dismissedAnnouncementId';
 const RANGE_MS = { '24h': 24*3600*1000, '7d': 7*24*3600*1000, '30d': 30*24*3600*1000 };
 const BUCKET_MS = { '24h': 5*60*1000, '7d': 30*60*1000, '30d': 2*3600*1000 };
+const counts = { online: 0, record: 0, unique: 0, today: 0 };
+let onlineOnceReported = false;
 
-// ---------- Helpers ----------
-function msToHuman(ms) {
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  if (h > 0) return `${h}h ${m}min`;
-  if (m > 0) return `${m}min ${sec}s`;
-  return `${sec}s`;
-}
-
-// ---------- Chart ----------
-const chartCtx = $('concurrentChart').getContext('2d');
-const chart = new Chart(chartCtx, {
-  type: 'line',
-  data: { labels: [], datasets: [{
-    label: 'Online', data: [],
-    borderColor: '#eaade5', backgroundColor: 'rgba(234,173,229,0.15)',
-    fill: true, tension: 0.25, pointRadius: 0, borderWidth: 2
-  }]},
-  options: {
-    responsive: true, maintainAspectRatio: false, resizeDelay: 200,
-    animation: false,
-    plugins: { legend: { display: false } },
-    scales: {
-      x: { ticks: { color: '#8a7891', maxTicksLimit: 8 }, grid: { color: '#2c2233' } },
-      y: { ticks: { color: '#8a7891', precision: 0 }, grid: { color: '#2c2233' }, beginAtZero: true }
-    }
-  }
-});
-
-// ---------- Rendering ----------
-function renderLive(live) {
-  if (!live) return;
-  // Online + flash if record beaten
-  const n = live.totalOnline | 0;
-  elOnline.textContent = n;
-  elOnlineSub.textContent = n === 1 ? 'player' : 'players';
-  elRecord.textContent = live.record | 0;
-  elUnique.textContent = live.totalUniques | 0;
-  if (live.record > lastRecord && lastRecord > 0) {
-    elRecord.classList.add('flash');
-    setTimeout(() => elRecord.classList.remove('flash'), 1200);
-  }
-  lastRecord = live.record;
-
-  // Delta indicator
-  const elDelta = $('onlineDelta');
-  if (elDelta) {
-    if (prevOnline !== null) {
-      const d = n - prevOnline;
-      elDelta.className = 'big-delta ' + (d > 0 ? 'delta-up' : d < 0 ? 'delta-down' : 'delta-eq');
-      elDelta.textContent = d > 0 ? '+' + d : d < 0 ? String(d) : '—';
-    }
-    prevOnline = n;
-  }
-
-  // Zone bars
-  const total = Math.max(1, n);
-  const byZone = live.byZone || {};
-  const existing = new Map();
-  elZoneBars.querySelectorAll('.zone-row').forEach(row => existing.set(row.dataset.zone, row));
-
-  for (const zone of ZONE_ORDER) {
-    const count = byZone[zone] || 0;
-    let row = existing.get(zone);
-    if (!row) {
-      row = document.createElement('div');
-      row.className = 'zone-row';
-      row.dataset.zone = zone;
-      row.innerHTML = `
-        <div class="zone-name">${ZONE_LABELS[zone] || zone}</div>
-        <div class="zone-bar-wrap"><div class="zone-bar"></div></div>
-        <div class="zone-count">0</div>`;
-      elZoneBars.appendChild(row);
-    }
-    row.querySelector('.zone-bar').style.width = ((count / total) * 100).toFixed(1) + '%';
-    row.querySelector('.zone-count').textContent = count;
-    existing.delete(zone);
-  }
-}
-
-function renderDropoff(d) {
-  const fillRows = (tbody, list, labeller) => {
-    tbody.innerHTML = '';
-    for (const r of list) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${labeller(r.key)}</td><td>${r.count}</td>`;
-      tbody.appendChild(tr);
-    }
-    if (list.length === 0) tbody.innerHTML = '<tr><td colspan="2" style="opacity:0.5">no data yet</td></tr>';
-  };
-  fillRows(elDropZones, d.byZone || [], k => ZONE_LABELS[k] || k);
-  fillRows(elDropMaps, d.byMap || [], k => mapLabel(parseInt(k, 10)));
-}
-
-function renderConcurrent(points) {
-  const labels = points.map(p => {
-    const d = new Date(p.bucket);
-    return currentRange === '24h'
-      ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      : d.toLocaleString([], { month: 'short', day: '2-digit', hour: '2-digit' });
-  });
-  chart.data.labels = labels;
-  chart.data.datasets[0].data = points.map(p => p.count);
-  chart.update('none');
-}
-
-function renderPlatforms(data) {
-  const el = $('platformStats');
-  if (!el || !data) return;
-  const total = data.total || {};
-  const online = data.online || {};
-  const pcTotal = (total.win32 || 0) + (total.linux || 0) + (total.darwin || 0);
-  const androidTotal = total.android || 0;
-  const pcOnline = (online.win32 || 0) + (online.linux || 0) + (online.darwin || 0);
-  const androidOnline = online.android || 0;
-  const row = (name, n, o) =>
-    `<div class="plat-row"><span class="plat-name">${name}</span><span class="plat-count">${n}</span><span class="plat-online">${o > 0 ? ` (${o} live)` : ''}</span></div>`;
-  el.innerHTML = row('PC', pcTotal, pcOnline) + row('Android', androidTotal, androidOnline);
-}
-
-function renderSessionStats(data) {
-  const el = $('sessionStats');
-  if (!el || !data) return;
-  if (!data.total_sessions) { el.innerHTML = '<span class="stat-placeholder">Aucune session complète</span>'; return; }
-  const statRow = (label, val) =>
-    `<div class="session-row"><span class="session-label">${label}</span><span class="session-value">${val}</span></div>`;
-  el.innerHTML =
-    statRow('Durée moyenne', msToHuman(data.avg_ms)) +
-    statRow('Temps total cumulé', msToHuman(data.total_ms)) +
-    statRow('Sessions tracées', data.total_sessions.toLocaleString());
-}
-
-// ---------- API ----------
+// ===================================================================
+//  API
+// ===================================================================
 async function api(path) {
   if (!cfg.url || !cfg.token) return null;
-  const res = await fetch(cfg.url.replace(/\/+$/, '') + path, {
-    headers: { 'Authorization': 'Bearer ' + cfg.token }
-  });
+  const res = await fetch(cfg.url.replace(/\/+$/, '') + path, { headers: { 'Authorization': 'Bearer ' + cfg.token } });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
 }
 
-async function fetchReports() {
-  const tbody = document.querySelector('#reportsTable tbody');
-  if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#8a7891">Loading…</td></tr>';
-  try {
-    const data = await api('/v1/reports');
-    if (!data) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#8a7891">Not connected — configure settings first.</td></tr>';
-      return;
-    }
-    const reports = data.reports || [];
-    if (reports.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#8a7891">No reports yet</td></tr>';
-      return;
-    }
-    tbody.innerHTML = reports.map(function(r) {
-      var time = new Date(r.ts).toLocaleString();
-      var errFull = String(r.error || '').replace(/</g, '&lt;');
-      var errShort = errFull.slice(0, 80);
-      var errMore = errFull.length > 80
-        ? '<details style="margin-top:2px"><summary style="font-size:11px;cursor:pointer;color:#8a7891">show more</summary><div style="font-size:12px;margin-top:4px;color:#d4bede">' + errFull + '</div></details>'
-        : '';
-      var zone = ZONE_LABELS[r.zone] || r.zone || '—';
-      var ver = r.version || '—';
-      var plat = r.platform || '—';
-      var pid = r.player_id ? r.player_id.slice(0, 8) + '…' : '—';
-      var stack = r.stack ? '<details style="margin-top:4px"><summary style="font-size:11px;cursor:pointer;color:#8a7891">stack trace</summary><pre style="font-size:10px;white-space:pre-wrap;margin:4px 0 0;color:#a08aaa;max-width:600px">' + String(r.stack).replace(/</g, '&lt;').slice(0, 2000) + '</pre></details>' : '';
-      var shot = r.screenshot
-        ? '<img src="data:image/jpeg;base64,' + r.screenshot + '" style="max-height:48px;border-radius:4px;cursor:pointer;display:block" onclick="showScreenshot(\'' + r.screenshot + '\')" />'
-        : '<span style="color:#4a3a5a">—</span>';
-      return '<tr>'
-        + '<td style="white-space:nowrap;font-size:11px;color:#8a7891">' + time + '</td>'
-        + '<td style="color:#d4bede"><div style="font-size:12px">' + errShort + '</div>' + errMore + stack + '</td>'
-        + '<td>' + zone + '</td>'
-        + '<td>' + ver + '</td>'
-        + '<td>' + plat + '</td>'
-        + '<td style="font-size:11px;color:#6a5472">' + pid + '</td>'
-        + '<td>' + shot + '</td>'
-        + '</tr>';
-    }).join('');
-  } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#c87070">Error: ' + e.message + '</td></tr>';
+// ===================================================================
+//  SVG CHARTS (port du buildChart de la maquette)
+// ===================================================================
+function smoothPath(pts) {
+  if (pts.length < 3) return 'M' + pts.map(p => p.join(' ')).join(' L');
+  let d = `M${pts[0][0]} ${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i-1] || pts[i], p1 = pts[i], p2 = pts[i+1], p3 = pts[i+2] || p2;
+    const c1 = [p1[0] + (p2[0]-p0[0])/6, p1[1] + (p2[1]-p0[1])/6];
+    const c2 = [p2[0] - (p3[0]-p1[0])/6, p2[1] - (p3[1]-p1[1])/6];
+    d += `C${c1[0].toFixed(1)} ${c1[1].toFixed(1)} ${c2[0].toFixed(1)} ${c2[1].toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
   }
+  return d;
+}
+function buildChartSVG(id, vals, labels, color, glowColor, h, zeroBase) {
+  if (!vals || vals.length === 0) {
+    return `<svg viewBox="0 0 1000 ${h}" style="width:100%;height:auto;display:block"><text x="500" y="${h/2}" text-anchor="middle" fill="#6f5a80" font-size="26" font-family="Sora">loading…</text></svg>`;
+  }
+  if (vals.length === 1) vals = [vals[0], vals[0]];
+  const W = 1000, padL = 52, padR = 20, padT = 16, padB = 34;
+  const mx = Math.max(...vals);
+  let mn = zeroBase ? 0 : Math.min(...vals) * 0.86;
+  let top = mx * 1.06;
+  if (top <= mn) top = mn + 1;
+  const vdenom = Math.max(1, vals.length - 1);
+  const ldenom = Math.max(1, labels.length - 1);
+  const X = i => padL + (i / vdenom) * (W - padL - padR);
+  const Y = v => padT + (1 - (v - mn) / (top - mn)) * (h - padT - padB);
+  const pts = vals.map((v, i) => [X(i), Y(v)]);
+  const line = smoothPath(pts);
+  const area = line + `L${X(vals.length-1).toFixed(1)} ${h-padB}L${padL} ${h-padB}Z`;
+  const ticks = [0,1,2,3].map(i => mn + ((top - mn) * i) / 3);
+  const last = pts[pts.length - 1];
+  let svg = `<svg viewBox="0 0 ${W} ${h}" style="width:100%;height:auto;display:block;overflow:visible">`;
+  svg += `<defs><linearGradient id="g${id}" x1="0" y1="0" x2="0" y2="1">`;
+  svg += `<stop offset="0%" stop-color="${color}" stop-opacity="0.34"></stop>`;
+  svg += `<stop offset="100%" stop-color="${color}" stop-opacity="0"></stop></linearGradient></defs>`;
+  ticks.forEach((tv, i) => {
+    svg += `<line x1="${padL}" x2="${W-padR}" y1="${Y(tv).toFixed(1)}" y2="${Y(tv).toFixed(1)}" stroke="rgba(255,255,255,.06)" stroke-width="1"${i===0?'':' stroke-dasharray="3 6"'}></line>`;
+    svg += `<text x="${padL-10}" y="${(Y(tv)+8).toFixed(1)}" text-anchor="end" fill="#8a719c" font-size="24" font-family="Sora">${Math.round(tv).toLocaleString('en-US')}</text>`;
+  });
+  svg += `<path d="${area}" fill="url(#g${id})" style="animation:chartFade 1.4s .55s both"></path>`;
+  svg += `<path d="${line}" fill="none" stroke="${glowColor}" stroke-width="9" stroke-linecap="round" opacity="0.22" pathLength="1" style="stroke-dasharray:1;stroke-dashoffset:1;animation:chartDraw 1.8s cubic-bezier(.6,0,.3,1) forwards"></path>`;
+  svg += `<path d="${line}" fill="none" stroke="${color}" stroke-width="3.4" stroke-linecap="round" pathLength="1" style="stroke-dasharray:1;stroke-dashoffset:1;animation:chartDraw 1.8s cubic-bezier(.6,0,.3,1) forwards"></path>`;
+  svg += `<circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="7" fill="none" stroke="${color}" stroke-width="2" style="animation:endPulse 2s 1.9s ease-out infinite"></circle>`;
+  svg += `<circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="5.5" fill="${color}" style="filter:drop-shadow(0 0 8px ${color});animation:chartFade .4s 1.7s both"></circle>`;
+  labels.forEach((lb, i) => {
+    const x = padL + (i / ldenom) * (W - padL - padR);
+    const anchor = i === 0 ? 'start' : i === labels.length-1 ? 'end' : 'middle';
+    svg += `<text x="${x.toFixed(1)}" y="${h-8}" text-anchor="${anchor}" fill="#8a719c" font-size="23" font-family="Sora">${esc(lb)}</text>`;
+  });
+  svg += `</svg>`;
+  return svg;
+}
+function sampleLabels(points, n, fmt) {
+  if (!points.length) return [];
+  const out = [];
+  const count = Math.min(n, points.length);
+  for (let i = 0; i < count; i++) {
+    const idx = count === 1 ? points.length - 1 : Math.round(i / (count - 1) * (points.length - 1));
+    out.push(fmt(points[idx], idx === points.length - 1));
+  }
+  return out;
 }
 
+// ===================================================================
+//  RENDER — Live tab
+// ===================================================================
+const STAT_CARDS = [
+  { id:'online', label:'Players Online', numTint:'#ffb3cd', rune:'linear-gradient(135deg,#5fffb2,#e9b95f)', runeGlow:'rgba(95,255,178,.5)', subColor:'#7dffc4', sub:'online now' },
+  { id:'record', label:'Record Concurrent', numTint:'#c9a2ff', rune:'linear-gradient(135deg,#ff3d81,#a06bff)', runeGlow:'rgba(255,61,129,.5)', subColor:'#9d84ad', sub:'all-time peak' },
+  { id:'unique', label:'Unique Players', numTint:'#ffd98a', rune:'linear-gradient(135deg,#a06bff,#e9b95f)', runeGlow:'rgba(160,107,255,.5)', subColor:'#9d84ad', sub:'all-time total' },
+  { id:'today',  label:'Players Today', numTint:'#ffb3cd', rune:'linear-gradient(135deg,#e9b95f,#ff3d81)', runeGlow:'rgba(233,185,95,.5)', subColor:'#7dffc4', sub:'since midnight' }
+];
+function buildStatCards() {
+  const el = $('statCards');
+  if (!el) return;
+  el.innerHTML = STAT_CARDS.map(c => `
+    <div class="stat-card" data-card="${c.id}">
+      <div class="glowfollow"></div>
+      <div class="stat-rune" style="background:${c.rune};box-shadow:0 0 12px ${c.runeGlow}"></div>
+      <div class="stat-label">${c.label}</div>
+      <div class="stat-value" data-value="${c.id}" style="background:linear-gradient(180deg,#ffffff 20%,${c.numTint} 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 38px ${c.runeGlow}">—</div>
+      <div class="stat-sub" style="color:${c.subColor}">${c.sub}</div>
+    </div>`).join('');
+  // 3D tilt
+  el.querySelectorAll('.stat-card').forEach(card => {
+    card.addEventListener('mousemove', (e) => {
+      const r = card.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+      card.style.setProperty('--mx', (x*100)+'%');
+      card.style.setProperty('--my', (y*100)+'%');
+      card.style.transform = `perspective(900px) rotateX(${((0.5-y)*5).toFixed(2)}deg) rotateY(${((x-0.5)*7).toFixed(2)}deg) translateY(-3px)`;
+    });
+    card.addEventListener('mouseleave', () => { card.style.transform = ''; });
+  });
+}
+const _tweens = {};
+function setStat(id, target) {
+  const el = document.querySelector(`.stat-value[data-value="${id}"]`);
+  if (!el) return;
+  const start = _tweens[id] != null ? _tweens[id] : target;
+  const t0 = performance.now(), dur = 650;
+  const step = (now) => {
+    const k = Math.min(1, (now - t0) / dur);
+    const e = 1 - Math.pow(1 - k, 3);
+    const val = Math.round(start + (target - start) * e);
+    el.textContent = fmtN(val);
+    if (k < 1) requestAnimationFrame(step); else _tweens[id] = target;
+  };
+  _tweens[id] = start;
+  requestAnimationFrame(step);
+}
+function updateStatCards() {
+  setStat('online', counts.online);
+  setStat('record', counts.record);
+  setStat('unique', counts.unique);
+  setStat('today', counts.today);
+}
+
+function renderLive(live) {
+  if (!live) return;
+  lastLiveSnapshot = live;
+  counts.online = live.totalOnline | 0;
+  counts.record = live.record | 0;
+  counts.unique = live.totalUniques | 0;
+  updateStatCards();
+
+  const badge = $('navOnline');
+  if (badge) badge.textContent = fmtN(counts.online);
+
+  if (live.record > lastRecord && lastRecord > 0) {
+    const el = document.querySelector('.stat-value[data-value="record"]');
+    if (el) { el.style.transition = 'filter .3s'; el.style.filter = 'brightness(1.6)'; setTimeout(() => el.style.filter = '', 900); }
+  }
+  lastRecord = live.record;
+
+  if (!zoneEditMode) renderZones(live.byZone || {});
+}
+
+function renderZones(byZone) {
+  const list = $('zoneList');
+  if (!list) return;
+  const max = Math.max(1, ...ZONE_ORDER.map(z => byZone[z] || 0));
+  let total = 0;
+  for (const z of ZONE_ORDER) {
+    const c = byZone[z] || 0; total += c;
+    const w = Math.round((c / max) * 100);
+    // Update rows IN PLACE (never rebuild the HTML) so the flowing bar
+    // animation is not restarted on every live snapshot.
+    let row = list.querySelector('[data-zone="' + z + '"]');
+    if (!row) {
+      row = document.createElement('div');
+      row.dataset.zone = z;
+      row.innerHTML =
+        '<div class="zone-row-label"><span class="zn" style="color:#e9d5f0"></span>' +
+        '<span class="zc" style="font-variant-numeric:tabular-nums;color:#ffb3cd;font-weight:600"></span></div>' +
+        '<div class="zone-bar-track"><div class="zone-bar-fill"><div class="sheen2"></div><div class="tip"></div></div></div>';
+      list.appendChild(row);
+    }
+    row.querySelector('.zn').textContent = ZONE_LABELS[z] || z;
+    row.querySelector('.zc').textContent = c;
+    row.querySelector('.zone-bar-fill').style.width = w + '%';
+  }
+  const zt = $('zoneTotal'), zc = $('zoneCount');
+  if (zt) zt.textContent = fmtN(total);
+  if (zc) zc.textContent = ZONE_ORDER.length;
+}
+
+function renderConcurrent(points) {
+  points = points || [];
+  const vals = points.map(p => p.count | 0);
+  const labels = sampleLabels(points, 7, (p, isLast) => {
+    if (isLast) return 'now';
+    const d = new Date(p.bucket);
+    return ccRange === '24h'
+      ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleDateString([], { month: 'short', day: '2-digit' });
+  });
+  $('ccChart').innerHTML = buildChartSVG('cc' + ccRange + Date.now(), vals, labels, '#ff3d81', '#a06bff', 300, false);
+}
+
+function renderNewPlayers(data) {
+  const points = (data && data.points) || [];
+  const vals = points.map(p => p.count | 0);
+  const labels = sampleLabels(points, 5, (p, isLast) => {
+    if (isLast) return 'today';
+    const d = new Date(p.day + 'T00:00:00');
+    return d.toLocaleDateString([], { month: 'short', day: '2-digit' });
+  });
+  $('npChart').innerHTML = buildChartSVG('np' + npRange + Date.now(), vals, labels, '#e9b95f', '#ff9d5f', 230, true);
+}
+
+function renderPlatforms(data) {
+  if (!data) return;
+  const total = data.total || {};
+  const rows = PLATFORMS.map(p => ({ ...p, n: total[p.key] || 0 })).filter(p => p.n > 0);
+  const sum = rows.reduce((a, p) => a + p.n, 0) || 1;
+  rows.forEach(p => p.pct = Math.round(p.n / sum * 1000) / 10);
+  const bar = $('platformBar'), listEl = $('platformList');
+  if (bar) bar.innerHTML = rows.map(p => `<div style="width:${p.pct}%;background:${p.color};box-shadow:inset 0 0 12px rgba(255,255,255,.15);transition:width 1.2s cubic-bezier(.22,1,.36,1)"></div>`).join('');
+  if (listEl) listEl.innerHTML = rows.map(p => `
+    <div style="display:flex;align-items:center;gap:9px;font-size:12px">
+      <span style="width:9px;height:9px;border-radius:3px;background:${p.color};flex:none"></span>
+      <span style="color:#cdb8d8;flex:1">${p.name}</span>
+      <span style="font-variant-numeric:tabular-nums;color:#f6ecf7;font-weight:600">${p.pct}%</span>
+    </div>`).join('') || '<span style="color:#6f5a80;font-size:12px">no data yet</span>';
+}
+
+function renderSessionStats(data) {
+  if (!data) return;
+  const a = $('sessAvg'), m = $('sessMedian'), l = $('sessLongest'), tot = $('sessTotal');
+  if (!data.total_sessions) { if (a) a.textContent = '—'; if (m) m.textContent = '—'; if (l) l.textContent = '—'; if (tot) tot.textContent = '—'; return; }
+  if (a) a.textContent = durShort(data.avg_ms);
+  if (m) m.textContent = durShort(data.median_ms);
+  if (l) l.textContent = durShort(data.longest_ms);
+  if (tot) tot.textContent = Math.round((data.total_ms || 0) / 3600000).toLocaleString('en-US') + 'h';
+}
+
+function renderLanguages(data) {
+  const langs = (data && data.languages) || {};
+  const entries = Object.entries(langs).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((s, [, n]) => s + n, 0) || 1;
+  const max = entries.length ? entries[0][1] : 1;
+  const regionEl = $('regionList'), langEl = $('langList');
+  if (regionEl) regionEl.innerHTML = entries.slice(0, 5).map(([code, n]) => {
+    const name = LANG_NAMES[code] || code.toUpperCase();
+    const pct = Math.round(n / total * 100);
+    const w = Math.round(n / max * 100);
+    return `<div class="region-row"><span class="region-name">${esc(name)}</span><div class="region-track"><div class="region-fill" style="width:${w}%"></div></div><span class="region-pct">${pct}%</span></div>`;
+  }).join('') || '<span style="color:#6f5a80;font-size:12px">no data yet</span>';
+  if (langEl) langEl.innerHTML = entries.slice(0, 10).map(([code, n]) => {
+    const pct = Math.round(n / total * 100);
+    return `<span class="lang-pill">${esc(code.toUpperCase())} <span>${pct}%</span></span>`;
+  }).join('');
+}
+
+function renderDropoff(d) {
+  const fill = (el, list, labeller) => {
+    if (!el) return;
+    const totalExits = (list || []).reduce((a, r) => a + (r.count | 0), 0) || 1;
+    if (!list || !list.length) { el.innerHTML = '<div style="color:#6f5a80;font-size:12px;padding:8px 2px">no data yet</div>'; return; }
+    el.innerHTML = list.map((r, i) => {
+      const pct = Math.round(r.count / totalExits * 1000) / 10;
+      return `<div class="drop-row"><span class="drop-i">${i+1}</span><span class="drop-name">${esc(labeller(r.key))}</span><span class="drop-exits">${r.count}</span><span class="drop-pct">${pct}%</span></div>`;
+    }).join('');
+  };
+  fill($('dropZones'), d.byZone || [], k => ZONE_LABELS[k] || k);
+  fill($('dropMaps'), d.byMap || [], k => mapLabel(parseInt(k, 10)));
+}
+
+// ---------- Zone editor (label editing → PUT /v1/admin/zones) ----------
+function openZoneEditor() {
+  zoneEditMode = true;
+  const panel = $('zoneEditPanel'), list = $('zoneList'), btn = $('zoneEditBtn');
+  panel.innerHTML = ZONE_ORDER.map(k => `
+    <div style="display:flex;gap:8px;align-items:center">
+      <span style="width:74px;flex:none;font-size:10px;color:#6f5a80;font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis">${k}</span>
+      <input class="field" data-zone="${k}" value="${esc(ZONE_LABELS[k] || k)}" style="flex:1;min-width:0;padding:8px 11px;font-size:12px">
+    </div>`).join('');
+  panel.classList.remove('hidden');
+  list.classList.add('hidden');
+  btn.textContent = 'DONE'; btn.classList.add('on');
+}
+async function closeZoneEditorAndSave() {
+  const panel = $('zoneEditPanel'), list = $('zoneList'), btn = $('zoneEditBtn');
+  const inputs = panel.querySelectorAll('input[data-zone]');
+  const labels = {};
+  inputs.forEach(inp => labels[inp.dataset.zone] = inp.value.trim());
+  try {
+    if (cfg.url && cfg.token) {
+      const res = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/admin/zones', {
+        method: 'PUT',
+        headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(labels)
+      });
+      if (res.ok) { const j = await res.json(); ZONE_LABELS = Object.assign(ZONE_LABELS, j.labels || labels); }
+    }
+  } catch (e) { /* ignore */ }
+  zoneEditMode = false;
+  panel.classList.add('hidden'); list.classList.remove('hidden');
+  btn.textContent = 'EDIT ZONES'; btn.classList.remove('on');
+  if (lastLiveSnapshot) renderZones(lastLiveSnapshot.byZone || {});
+  refreshDropoff();
+}
+
+// ===================================================================
+//  FETCHERS
+// ===================================================================
 async function fetchZoneLabels() {
   try {
     const data = await api('/v1/admin/zones');
-    if (data?.labels) ZONE_LABELS = Object.assign(ZONE_LABELS, data.labels);
-  } catch(e) { /* ignore */ }
-}
-async function fetchPlatforms() {
-  try { renderPlatforms(await api('/v1/stats/platforms')); } catch(e) { /* ignore */ }
-}
-async function fetchSessionStats() {
-  try { renderSessionStats(await api('/v1/stats/sessions')); } catch(e) { /* ignore */ }
-}
-
-async function refreshDropoff() {
-  try { renderDropoff(await api('/v1/stats/dropoff?rangeMs=' + (24*3600*1000))); }
-  catch (e) { /* ignore */ }
-}
-async function refreshConcurrent() {
-  try {
-    const range = RANGE_MS[currentRange], bucket = BUCKET_MS[currentRange];
-    renderConcurrent(await api(`/v1/stats/concurrent?rangeMs=${range}&bucketMs=${bucket}`));
-  } catch (e) { /* ignore */ }
-}
-
-// ---------- WebSocket ----------
-function setConn(state, text) {
-  elConn.className = 'status ' + state;
-  const t = elConn.querySelector('.status-text');
-  if (t) t.textContent = text; else elConn.textContent = text;
-}
-
-function hideUpdateNotice() {
-  if (!elUpdateNotice) return;
-  elUpdateNotice.classList.add('hidden');
-  elUpdateNotice.innerHTML = '';
-}
-
-function showUpdateModal(version, url, notes) {
-  const existing = document.getElementById('sgUpdateModal');
-  if (existing) return;
-
-  const overlay = document.createElement('div');
-  overlay.id = 'sgUpdateModal';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,4,20,0.92);display:flex;align-items:center;justify-content:center;z-index:10000;';
-
-  const box = document.createElement('div');
-  box.style.cssText = 'background:#1a0d2e;border:1px solid rgba(234,173,229,0.3);border-radius:12px;padding:32px;width:480px;max-width:90vw;';
-  box.innerHTML = `
-    <h2 style="color:#eaade5;margin:0 0 10px;font-size:18px;">Update available — v${version}</h2>
-    ${notes ? `<p style="color:#9a7aaa;font-size:13px;margin:0 0 20px;white-space:pre-wrap;max-height:120px;overflow-y:auto;">${notes}</p>` : '<p style="color:#9a7aaa;font-size:13px;margin:0 0 20px;">A new version is ready to install.</p>'}
-    <div id="sgUpdateProgress" style="display:none;margin-bottom:16px;">
-      <div style="background:#2c1a40;border-radius:4px;height:6px;overflow:hidden;">
-        <div id="sgUpdateBar" style="background:#eaade5;height:100%;width:0%;transition:width 0.3s;"></div>
-      </div>
-      <p id="sgUpdateText" style="color:#9a7aaa;font-size:12px;margin:6px 0 0;"></p>
-    </div>
-    <div style="display:flex;gap:12px;justify-content:flex-end;">
-      <button id="sgUpdateLater" style="background:transparent;color:#6a4870;border:1px solid #3a2450;border-radius:6px;padding:8px 18px;cursor:pointer;font-size:13px;">Later</button>
-      <button id="sgUpdateInstall" style="background:rgba(234,173,229,0.15);color:#eaade5;border:1px solid rgba(234,173,229,0.4);border-radius:6px;padding:8px 20px;cursor:pointer;font-size:13px;">Install & Restart</button>
-    </div>
-  `;
-
-  overlay.appendChild(box);
-  document.body.appendChild(overlay);
-
-  document.getElementById('sgUpdateLater').onclick = () => overlay.remove();
-  document.getElementById('sgUpdateInstall').onclick = () => {
-    document.getElementById('sgUpdateLater').style.display = 'none';
-    document.getElementById('sgUpdateInstall').disabled = true;
-    document.getElementById('sgUpdateInstall').textContent = 'Installing…';
-    document.getElementById('sgUpdateProgress').style.display = 'block';
-    installUpdate(url, version);
-  };
-}
-
-function installUpdate(url, targetVersion) {
-  if (!_nw) return;
-  const { path, fs, os, https, http, cp } = _nw;
-  const bar = document.getElementById('sgUpdateBar');
-  const txt = document.getElementById('sgUpdateText');
-  const setTxt = (t) => { if (txt) txt.textContent = t; };
-  const setBar = (pct) => { if (bar) bar.style.width = pct + '%'; };
-
-  const tmpZip = path.join(os.tmpdir(), 'sg-dashboard-update.zip');
-  const exePath = process.execPath;
-  const packageNwDir = path.join(path.dirname(exePath), 'package.nw');
-
-  setTxt('Downloading…');
-
-  function doGet(getUrl, cb) {
-    const parsed = new URL(getUrl);
-    const transport = parsed.protocol === 'https:' ? https : http;
-    transport.get(getUrl, (res) => {
-      if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
-        res.resume();
-        doGet(res.headers.location, cb);
-      } else {
-        cb(null, res);
-      }
-    }).on('error', (err) => cb(err));
-  }
-
-  doGet(url, (err, res) => {
-    if (err) { setTxt('✗ ' + err.message); return; }
-    const total = parseInt(res.headers['content-length'] || '0', 10);
-    let done = 0;
-    const file = fs.createWriteStream(tmpZip);
-    res.on('data', (chunk) => {
-      done += chunk.length;
-      if (total > 0) setBar(Math.round(done / total * 100));
-    });
-    res.pipe(file);
-    file.on('finish', () => {
-      file.close();
-      setBar(100); setTxt('Extracting…');
-      const ps = `Expand-Archive -LiteralPath '${tmpZip.replace(/'/g, "''")}' -DestinationPath '${packageNwDir.replace(/'/g, "''")}' -Force`;
-      cp.execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], (err2) => {
-        try { fs.unlinkSync(tmpZip); } catch(e) {}
-        if (err2) { setTxt('✗ Failed: ' + err2.message); return; }
-        try { if (targetVersion) fs.writeFileSync(path.join(packageNwDir, '.sg_version'), targetVersion); } catch(e) {}
-        setTxt('Restarting…');
-        const bat = `@echo off\r\ntimeout /t 2 /nobreak > nul\r\nstart "" "${exePath}"\r\ndel "%~f0"\r\n`;
-        const batPath = path.join(os.tmpdir(), 'sg-relaunch.bat');
-        fs.writeFileSync(batPath, bat);
-        cp.spawn('cmd.exe', ['/c', batPath], { detached: true, stdio: 'ignore' }).unref();
-        setTimeout(() => nw.App.quit(), 600);
-      });
-    });
-    file.on('error', (e) => { fs.unlink(tmpZip, () => {}); setTxt('✗ ' + e.message); });
-  });
-}
-
-function populateAnnouncementForm() {
-  const announcement = currentAnnouncementData;
-  if (!elAnnounceTitle) return;
-  elAnnounceTitle.value = announcement?.title || '';
-  elAnnounceBody.value = announcement?.body || '';
-  elAnnounceUrl.value = announcement?.url || '';
-  elAnnounceVersion.value = announcement?.version || '';
-
-  const statsEl = $('announceStats');
-  if (statsEl) {
-    if (announcement && announcement.viewCount != null) {
-      const n = announcement.viewCount;
-      statsEl.innerHTML = `
-        <span class="stat-label">Annonce active</span>
-        <span class="stat-views">${n}<span class="stat-views-label">&nbsp;vue${n !== 1 ? 's' : ''}</span></span>
-      `;
-      statsEl.classList.remove('hidden');
-    } else {
-      statsEl.classList.add('hidden');
+    if (data && data.labels) {
+      ZONE_LABELS = Object.assign(ZONE_LABELS, data.labels);
+      if (lastLiveSnapshot && !zoneEditMode) renderZones(lastLiveSnapshot.byZone || {});
     }
+  } catch (e) {}
+}
+async function fetchPlatforms() { try { renderPlatforms(await api('/v1/stats/platforms')); } catch (e) {} }
+async function fetchSessionStats() { try { renderSessionStats(await api('/v1/stats/sessions')); } catch (e) {} }
+async function fetchLanguages() { try { renderLanguages(await api('/v1/stats/languages')); } catch (e) {} }
+async function fetchToday() {
+  try { const d = await api('/v1/stats/today'); if (d && d.today != null) { counts.today = d.today; setStat('today', counts.today); } } catch (e) {}
+}
+async function refreshDropoff() { try { renderDropoff(await api('/v1/stats/dropoff?rangeMs=' + (24*3600*1000))); } catch (e) {} }
+async function refreshConcurrent() {
+  try { renderConcurrent(await api(`/v1/stats/concurrent?rangeMs=${RANGE_MS[ccRange]}&bucketMs=${BUCKET_MS[ccRange]}`)); } catch (e) {}
+}
+async function refreshNewPlayers() { try { renderNewPlayers(await api(`/v1/stats/newplayers?days=${npRange}`)); } catch (e) {} }
+
+// ===================================================================
+//  ANNOUNCEMENTS
+// ===================================================================
+function renderActiveAnnouncement(a) {
+  currentAnnouncementData = a || null;
+  const t = $('activeTitle'), m = $('activeMessage'), ago = $('activeAgo'), tags = $('activeTags');
+  const impr = $('reachImpressions'), onl = $('reachOnline');
+  if (onl) onl.textContent = fmtN(counts.online);
+  if (!a || !a.title) {
+    if (t) t.textContent = '— no active announcement —';
+    if (m) m.textContent = '';
+    if (ago) ago.textContent = 'none';
+    if (tags) tags.innerHTML = '';
+    if (impr) impr.textContent = '—';
+    return;
+  }
+  if (t) t.textContent = a.title;
+  if (m) m.textContent = a.body || '';
+  if (ago) ago.textContent = 'active';
+  if (impr) impr.textContent = a.viewCount != null ? fmtN(a.viewCount) : '—';
+  if (tags) {
+    let h = '';
+    if (a.version) h += `<span style="padding:4px 11px;border-radius:16px;font-size:10.5px;background:rgba(160,107,255,.12);border:1px solid rgba(160,107,255,.3);color:#d6c2f5">min v${esc(a.version)}</span>`;
+    if (a.url) h += `<span style="padding:4px 11px;border-radius:16px;font-size:10.5px;background:rgba(233,185,95,.10);border:1px solid rgba(233,185,95,.3);color:#ffd98a">${esc(a.url.replace(/^https?:\/\//,''))}</span>`;
+    tags.innerHTML = h;
   }
 }
-
-function populateSettings() {
-  $('cfgUrl').value = cfg.url || '';
-  $('cfgToken').value = cfg.token || '';
-  const el = $('appVersionLabel');
-  if (el) el.innerHTML = 'SuccubusStats v' + APP_VERSION + ' &nbsp;·&nbsp; made by Henergyque &nbsp;·&nbsp; Kutushmurf est un enculé';
+function populateAnnounceForm() {
+  const a = currentAnnouncementData;
+  if ($('annTitle')) $('annTitle').value = a && a.title || '';
+  if ($('annBody')) $('annBody').value = a && a.body || '';
+  if ($('annUrl')) $('annUrl').value = a && a.url || '';
+  if ($('annVersion')) $('annVersion').value = a && a.version || '';
 }
-
-const TAB_NAV_MAP = {
-  'tab-live': 'navLive',
-  'tab-announcement': 'navAnnouncement',
-  'tab-reports': 'navReports',
-  'tab-update': 'navUpdate',
-  'tab-settings': 'navSettings'
-};
-
-const ALL_TABS = Object.keys(TAB_NAV_MAP);
-
-function showTab(tabId) {
-  ALL_TABS.forEach(id => {
-    const tab = document.getElementById(id);
-    if (tab) tab.classList.add('hidden');
-    const nav = document.getElementById(TAB_NAV_MAP[id]);
-    if (nav) nav.classList.remove('active');
-  });
-  const target = document.getElementById(tabId);
-  if (target) target.classList.remove('hidden');
-  const activeNav = document.getElementById(TAB_NAV_MAP[tabId]);
-  if (activeNav) activeNav.classList.add('active');
-  if (tabId === 'tab-announcement') {
-    fetchAnnouncement();
-  }
-  if (tabId === 'tab-reports') {
-    fetchReports();
-    reportsTabOpen = true;
-    const badge = $('reportsBadge');
-    if (badge) badge.classList.add('hidden');
-  } else {
-    reportsTabOpen = false;
-  }
-  if (tabId === 'tab-settings') {
-    populateSettings();
-  }
-  if (tabId === 'tab-update') {
-    fetchCurrentUpdate();
-  }
-}
-
-async function publishAnnouncement() {
-  if (!elAnnounceTitle || !elAnnounceBody) return;
-  if (!cfg.url || !cfg.token) return alert('Configure settings first.');
-  const title = elAnnounceTitle.value.trim();
-  const body = elAnnounceBody.value.trim();
-  if (!title || !body) {
-    return alert('Title and message are required to publish an announcement.');
-  }
+async function fetchAnnouncement() {
   try {
-    const payload = {
-      title,
-      body,
-      url: elAnnounceUrl.value.trim() || undefined,
-      version: elAnnounceVersion.value.trim() || undefined
-    };
-    const data = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/announcement', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + cfg.token,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-    if (!data.ok) throw new Error('HTTP ' + data.status);
-    const json = await data.json();
-    currentAnnouncementData = json.announcement || null;
-    renderAnnouncement(currentAnnouncementData);
-    populateAnnouncementForm();
-    alert('Announcement published.');
-  } catch (e) {
-    alert('Unable to publish announcement. Check the URL/token and try again.');
-  }
+    const data = await api('/v1/announcement');
+    const a = data && data.announcement || null;
+    renderActiveAnnouncement(a);
+    if (currentTab === 'announce') populateAnnounceForm();
+  } catch (e) {}
 }
-
+async function publishAnnouncement() {
+  if (!cfg.url || !cfg.token) return alert('Configure settings first.');
+  const title = ($('annTitle').value || '').trim();
+  const body = ($('annBody').value || '').trim();
+  if (!title || !body) return alert('Title and message are required.');
+  try {
+    const res = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/announcement', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, body, url: ($('annUrl').value || '').trim() || undefined, version: ($('annVersion').value || '').trim() || undefined })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const j = await res.json();
+    renderActiveAnnouncement(j.announcement || null);
+    const toast = $('annToast'); if (toast) { toast.classList.remove('hidden'); setTimeout(() => toast.classList.add('hidden'), 4000); }
+  } catch (e) { alert('Unable to publish announcement. Check URL/token.'); }
+}
 async function deleteAnnouncement() {
   if (!cfg.url || !cfg.token) return alert('Configure settings first.');
   if (!confirm('Delete the current active announcement?')) return;
   try {
-    const data = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/announcement', {
-      method: 'DELETE',
-      headers: { 'Authorization': 'Bearer ' + cfg.token }
+    const res = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/announcement', { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + cfg.token } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    renderActiveAnnouncement(null);
+    populateAnnounceForm();
+  } catch (e) { alert('Unable to delete announcement.'); }
+}
+
+// ===================================================================
+//  REPORTS
+// ===================================================================
+let _reportsCache = [];
+function renderReports(reports) {
+  _reportsCache = reports || [];
+  const wrap = $('reportsWrap'), empty = $('reportsEmpty'), table = $('reportsTable');
+  const countEl = $('reportCount'); if (countEl) countEl.textContent = _reportsCache.length;
+  const badge = $('navReports');
+  if (badge) { if (_reportsCache.length > 0) { badge.textContent = _reportsCache.length; } }
+  if (_reportsCache.length === 0) {
+    if (wrap) wrap.classList.add('hidden');
+    if (empty) empty.classList.remove('hidden');
+    return;
+  }
+  if (wrap) wrap.classList.remove('hidden');
+  if (empty) empty.classList.add('hidden');
+  if (!table) return;
+  table.innerHTML = _reportsCache.map(r => {
+    const time = new Date(r.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const err = esc(String(r.error || '').slice(0, 120));
+    const zone = esc(ZONE_LABELS[r.zone] || r.zone || '—');
+    const ver = esc(r.version || '—');
+    const plat = esc(r.platform || '—');
+    const pid = r.player_id ? esc(r.player_id.slice(0, 8)) + '…' : '—';
+    const shot = r.screenshot
+      ? `<span class="rep-shot" style="background:rgba(233,185,95,.10);border:1px solid rgba(233,185,95,.4);color:#ffd98a" data-shot="${esc(r.id)}">view</span>`
+      : `<span class="rep-shot" style="background:transparent;border:1px solid rgba(255,255,255,.08);color:#6f5a80">—</span>`;
+    return `<div class="rep-row">
+      <span style="font-variant-numeric:tabular-nums;color:#9d84ad">${time}</span>
+      <span style="color:#ff8a97;font-family:ui-monospace,monospace" class="rep-ell" title="${esc(r.error || '')}">${err}</span>
+      <span style="color:#e9d5f0" class="rep-ell">${zone}</span>
+      <span style="color:#cdb8d8;font-variant-numeric:tabular-nums">${ver}</span>
+      <span><span class="plat-tag">${plat}</span></span>
+      <span style="color:#ffd98a" class="rep-ell">${pid}</span>
+      <span style="text-align:right">${shot}</span>
+    </div>`;
+  }).join('');
+  table.querySelectorAll('[data-shot]').forEach(el => {
+    el.addEventListener('click', () => {
+      const rep = _reportsCache.find(r => String(r.id) === el.dataset.shot);
+      if (rep && rep.screenshot) showScreenshot(rep.screenshot);
     });
-    if (!data.ok) throw new Error('HTTP ' + data.status);
-    currentAnnouncementData = null;
-    renderAnnouncement(null);
-    populateAnnouncementForm();
-    alert('Announcement deleted.');
-  } catch (e) {
-    alert('Unable to delete announcement. Check the URL/token and try again.');
-  }
+  });
 }
-
-
-function loadDismissedAnnouncementId() {
-  return localStorage.getItem(DISMISSED_ANNOUNCEMENT_KEY);
-}
-function saveDismissedAnnouncementId(id) {
-  if (!id) return localStorage.removeItem(DISMISSED_ANNOUNCEMENT_KEY);
-  localStorage.setItem(DISMISSED_ANNOUNCEMENT_KEY, String(id));
-}
-function renderAnnouncement(announcement) {
-  if (!elAnnouncementView) return;
-  if (!announcement || !announcement.title || String(announcement.id) === loadDismissedAnnouncementId()) {
-    elAnnouncementView.classList.add('hidden');
-    elAnnouncementView.innerHTML = '';
-    return;
-  }
-
-  const actionLink = announcement.url ? `<a href="${announcement.url}" target="_blank">Open announcement</a>` : '';
-  const versionTag = announcement.version ? ` <span style="opacity:.75">(${announcement.version})</span>` : '';
-  const _esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  elAnnouncementView.innerHTML = `
-    <div class="announce-title">${_esc(announcement.title)}${versionTag}</div>
-    <div class="announce-text">${_esc(announcement.body)}</div>
-    <div class="announce-actions">
-      ${actionLink}
-      <button id="dismissAnnouncement">Got it</button>
-    </div>
-  `;
-  elAnnouncementView.classList.remove('hidden');
-  const btn = document.getElementById('dismissAnnouncement');
-  if (btn) {
-    btn.addEventListener('click', () => {
-      saveDismissedAnnouncementId(announcement.id);
-      renderAnnouncement(null);
-    });
-  }
-}
-
-async function fetchAnnouncement() {
-  try {
-    const data = await api('/v1/announcement');
-    const announcement = data?.announcement || null;
-    currentAnnouncementData = announcement;
-    renderAnnouncement(announcement);
-    populateAnnouncementForm();
-    if (announcement && announcement.id && announcement.id !== lastAnnouncementIdNotified && String(announcement.id) !== loadDismissedAnnouncementId()) {
-      lastAnnouncementIdNotified = announcement.id;
-      if (Notification && Notification.permission === 'granted') {
-        new Notification('SuccubusStats', {
-          body: announcement.body,
-          silent: true
-        });
-      }
-    }
-  } catch (e) {
-    // ignore
-  }
-}
-
-async function checkVersion() {
-  try {
-    const data = await api('/v1/version');
-    const latest = String(data?.latest || '').trim();
-    const url = String(data?.url || '').trim();
-    const notes = String(data?.notes || '').trim();
-    if (!latest) return;
-    if (latest !== APP_VERSION) {
-      if (_nw && url) {
-        showUpdateModal(latest, url, notes);
-      } else {
-        if (!elUpdateNotice) return;
-        elUpdateNotice.classList.remove('hidden');
-        elUpdateNotice.innerHTML = `New version available: <strong>${latest}</strong>`;
-      }
-    } else {
-      hideUpdateNotice();
-    }
-  } catch (e) {
-    // ignore version check failures
-  }
-}
-
-function connect() {
-  if (!cfg.url || !cfg.token) {
-    setConn('err', 'configure settings');
-    showTab('tab-settings');
-    return;
-  }
-  setConn('', 'connecting…');
-  const wsUrl = cfg.url.replace(/^http/, 'ws').replace(/\/+$/, '') + '/v1/stream?token=' + encodeURIComponent(cfg.token);
-  try {
-    ws = new WebSocket(wsUrl);
-  } catch (e) {
-    setConn('err', 'invalid URL');
-    return;
-  }
-  ws.onopen = () => {
-    setConn('ok', 'live');
-    refreshDropoff();
-    refreshConcurrent();
-    checkVersion();
-    fetchAnnouncement();
-    fetchToday();
-    checkReportsBadge();
-    fetchZoneLabels();
-    fetchPlatforms();
-    fetchSessionStats();
-  };
-  ws.onmessage = (ev) => {
-    try {
-      const msg = JSON.parse(ev.data);
-      if (msg.type === 'snapshot') {
-        lastWsTs = Date.now();
-        lastLiveSnapshot = msg.live;
-        const elLU = $('lastUpdate');
-        if (elLU) elLU.textContent = 'updated just now';
-        renderLive(msg.live);
-      }
-      if (msg.type === 'bug_report') {
-        if (reportsTabOpen) {
-          fetchReports();
-        } else {
-          const badge = $('reportsBadge');
-          if (badge) badge.classList.remove('hidden');
-        }
-      }
-    } catch (e) {}
-  };
-  ws.onclose = () => {
-    setConn('err', 'disconnected');
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(connect, 3000);
-  };
-  ws.onerror = () => { try { ws.close(); } catch (e) {} };
-}
-
-// Live data polling — fallback when WebSocket snapshot is slow (server may batch pushes)
-let _liveEndpointExists = true;
-async function pollLive() {
-  if (!cfg.url || !cfg.token || !_liveEndpointExists) return;
-  // Skip if WebSocket delivered a fresh snapshot recently (within 4s)
-  if (Date.now() - lastWsTs < 4000) return;
-  try {
-    const data = await api('/v1/live');
-    if (data && data.live) { lastLiveSnapshot = data.live; renderLive(data.live); }
-  } catch (e) {
-    // 404 = endpoint doesn't exist, stop polling to avoid noise
-    if (e.message && e.message.includes('404')) _liveEndpointExists = false;
-  }
-}
-setInterval(pollLive, 3000);
-
-// dropoff refresh every 60s, concurrent every 5min
-setInterval(refreshDropoff, 60 * 1000);
-setInterval(refreshConcurrent, 5 * 60 * 1000);
-setInterval(fetchPlatforms, 5 * 1000);
-setInterval(fetchSessionStats, 5 * 1000);
-setInterval(checkVersion, VERSION_CHECK_INTERVAL_MS);
-setInterval(fetchAnnouncement, 5 * 60 * 1000);
-
-// Reports badge + notification Windows — poll count every 60s
-async function checkReportsBadge() {
-  if (!cfg.url || !cfg.token) return;
+async function fetchReports() {
   try {
     const data = await api('/v1/reports');
-    const count = (data?.reports || []).length;
-    if (!_reportCountInitialized) { _reportCountInitialized = true; lastReportCount = count; return; }
-    if (count > lastReportCount) {
-      const diff = count - lastReportCount;
-      if (!reportsTabOpen) {
-        const badge = $('reportsBadge');
-        if (badge) badge.classList.remove('hidden');
-      }
-      if (Notification && Notification.permission === 'granted') {
-        new Notification('SuccubusStats — Bug report', {
-          body: diff === 1 ? '1 nouveau rapport reçu.' : `${diff} nouveaux rapports reçus.`,
-          silent: false
-        });
-      }
-    }
-    lastReportCount = count;
-  } catch (e) { /* ignore */ }
+    renderReports(data && data.reports || []);
+  } catch (e) {}
 }
-setInterval(checkReportsBadge, 60 * 1000);
-
-// Joueurs du jour
-async function fetchToday() {
-  if (!cfg.url || !cfg.token) return;
+let _clearArmed = false, _clearTO = null;
+async function clearReports() {
+  if (!_clearArmed) {
+    _clearArmed = true;
+    const btn = $('reportsClear'); if (btn) { btn.textContent = 'SURE? CLICK AGAIN'; btn.classList.add('armed'); }
+    _clearTO = setTimeout(() => { _clearArmed = false; const b = $('reportsClear'); if (b) { b.textContent = 'CLEAR ALL'; b.classList.remove('armed'); } }, 3500);
+    return;
+  }
+  clearTimeout(_clearTO); _clearArmed = false;
+  const btn = $('reportsClear'); if (btn) { btn.textContent = 'CLEAR ALL'; btn.classList.remove('armed'); }
   try {
-    const data = await api('/v1/stats/today');
-    if (elToday && data?.today != null) elToday.textContent = data.today;
-  } catch (e) { /* ignore */ }
+    const res = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/reports', { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + cfg.token } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    lastReportCount = 0;
+    renderReports([]);
+    const badge = $('navReports'); if (badge) badge.classList.add('hidden');
+  } catch (e) { alert('Unable to clear reports.'); }
 }
-setInterval(fetchToday, 60 * 1000);
-
-// Export CSV
-function exportReportsCSV(reports) {
-  const header = ['Time', 'Error', 'Zone', 'Version', 'Platform', 'Player', 'Screenshot'];
-  const rows = reports.map(r => [
-    new Date(r.ts).toLocaleString(),
-    String(r.error || '').replace(/"/g, '""'),
-    r.zone || '',
-    r.version || '',
-    r.platform || '',
-    r.player_id || '',
-    r.screenshot ? '[screenshot attached]' : ''
+function exportReportsCSV() {
+  const header = ['Time','Error','Zone','Version','Platform','Player','Screenshot'];
+  const rows = _reportsCache.map(r => [
+    new Date(r.ts).toLocaleString(), String(r.error || '').replace(/"/g,'""'),
+    r.zone || '', r.version || '', r.platform || '', r.player_id || '', r.screenshot ? 'yes' : 'no'
   ].map(v => `"${v}"`).join(','));
   const csv = [header.join(','), ...rows].join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = `reports-${new Date().toISOString().slice(0,10)}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  a.href = url; a.download = `reports-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
-
-// Screenshot lightbox
 function showScreenshot(base64) {
-  var existing = document.getElementById('sg-screenshot-lightbox');
-  if (existing) existing.remove();
-  var lb = document.createElement('div');
-  lb.id = 'sg-screenshot-lightbox';
-  lb.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out';
-  lb.innerHTML = '<img src="data:image/jpeg;base64,' + base64 + '" style="max-width:90%;max-height:90%;border-radius:6px;box-shadow:0 0 40px rgba(0,0,0,0.8)">';
-  lb.addEventListener('click', function() { lb.remove(); });
+  const ex = document.getElementById('sg-shot-lb'); if (ex) ex.remove();
+  const lb = document.createElement('div');
+  lb.id = 'sg-shot-lb';
+  lb.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+  lb.innerHTML = '<img src="data:image/jpeg;base64,' + base64 + '" style="max-width:90%;max-height:90%;border-radius:8px;box-shadow:0 0 50px rgba(255,61,129,.3)">';
+  lb.addEventListener('click', () => lb.remove());
   document.body.appendChild(lb);
 }
-
-// Last-updated ticker
-setInterval(() => {
-  const el = $('lastUpdate');
-  if (!el || !lastWsTs) return;
-  const s = Math.floor((Date.now() - lastWsTs) / 1000);
-  el.textContent = s < 60 ? `updated ${s}s ago` : `updated ${Math.floor(s / 60)}m ago`;
-}, 10 * 1000);
-
-// ---------- Range tabs ----------
-document.querySelectorAll('.tab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentRange = btn.dataset.range;
-    refreshConcurrent();
-  });
-});
-
-elNavLive?.addEventListener('click', () => showTab('tab-live'));
-elNavAnnouncement?.addEventListener('click', () => showTab('tab-announcement'));
-elNavReports?.addEventListener('click', () => showTab('tab-reports'));
-$('navUpdate')?.addEventListener('click', () => showTab('tab-update'));
-elNavSettings?.addEventListener('click', () => showTab('tab-settings'));
-$('reportsClear')?.addEventListener('click', async () => {
-  if (!confirm('Clear all bug reports?')) return;
-  try {
-    const res = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/reports', {
-      method: 'DELETE',
-      headers: { 'Authorization': 'Bearer ' + cfg.token }
-    });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    lastReportCount = 0;
-    fetchReports();
-  } catch (e) {
-    alert('Unable to clear reports. Check URL/token.');
-  }
-});
-$('cfgSave')?.addEventListener('click', () => {
-  cfg = { url: $('cfgUrl').value.trim(), token: $('cfgToken').value.trim() };
-  saveCfg(cfg);
-  if (ws) { try { ws.close(); } catch (e) {} }
-  connect();
-  showTab('tab-live');
-});
-$('announcePublish')?.addEventListener('click', publishAnnouncement);
-$('announceDelete')?.addEventListener('click', deleteAnnouncement);
-
-// ---------- Zone editor ----------
-$('zoneEditBtn')?.addEventListener('click', () => {
-  const panel = $('zoneEditPanel');
-  const fields = $('zoneEditFields');
-  if (!panel || !fields) return;
-  if (!panel.classList.contains('hidden')) { panel.classList.add('hidden'); return; }
-  fields.innerHTML = ZONE_ORDER.map(k =>
-    `<div class="zone-edit-row">
-      <span class="zone-edit-key">${k}</span>
-      <input type="text" class="zone-edit-input" data-zone="${k}" value="${(ZONE_LABELS[k] || k).replace(/"/g, '&quot;')}">
-    </div>`
-  ).join('');
-  panel.classList.remove('hidden');
-});
-
-$('zoneEditCancel')?.addEventListener('click', () => {
-  $('zoneEditPanel')?.classList.add('hidden');
-});
-
-$('zoneEditSave')?.addEventListener('click', async () => {
-  if (!cfg.url || !cfg.token) return alert('Configure settings first.');
-  const inputs = $('zoneEditPanel')?.querySelectorAll('input[data-zone]') || [];
-  const labels = {};
-  for (const inp of inputs) labels[inp.dataset.zone] = inp.value.trim();
-  try {
-    const res = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/admin/zones', {
-      method: 'PUT',
-      headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json' },
-      body: JSON.stringify(labels)
-    });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const json = await res.json();
-    ZONE_LABELS = Object.assign(ZONE_LABELS, json.labels);
-    $('zoneEditPanel')?.classList.add('hidden');
-    if (lastLiveSnapshot) renderLive(lastLiveSnapshot);
-  } catch(e) {
-    alert('Échec de la sauvegarde : ' + e.message);
-  }
-});
-
-// ---------- Fullscreen (F11) ----------
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'F11') {
-    e.preventDefault();
-    if (typeof nw !== 'undefined') {
-      const win = nw.Window.get();
-      if (win.isFullscreen) win.leaveFullscreen();
-      else win.enterFullscreen();
-    }
-  }
-});
-
-// ---------- Boot ----------
-if (Notification && Notification.permission === 'default') Notification.requestPermission();
-checkReportsBadge();
-fetchToday();
-$('reportsExport')?.addEventListener('click', async () => {
+async function checkReportsBadge() {
+  if (!cfg.url || !cfg.token) return;
   try {
     const data = await api('/v1/reports');
-    exportReportsCSV(data?.reports || []);
-  } catch (e) { alert('Unable to fetch reports.'); }
-});
-
-// ---------- Game Update ----------
-const _updateStagedFiles = [];
-
-function formatBytes(n) {
-  if (n < 1024) return n + ' B';
-  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
-  return (n / (1024 * 1024)).toFixed(1) + ' MB';
-}
-
-async function fetchCurrentUpdate() {
-  const el = $('updateCurrentInfo');
-  if (!el) return;
-  try {
-    const data = await api('/v1/game/update/admin');
-    const m = data?.manifest;
-    if (!m || !m.version) {
-      el.innerHTML = '<span class="update-none">No update published</span>';
-      return;
-    }
-    let html = '<span class="update-version">v' + m.version + '</span>';
-    if (Array.isArray(m.files)) {
-      for (const f of m.files) {
-        const name = f.filename || f.path?.split('/').pop() || '?';
-        html += '<div class="update-file-entry">' + name + '</div>';
+    const count = (data && data.reports || []).length;
+    if (!_reportCountInitialized) { _reportCountInitialized = true; lastReportCount = count; if (count > 0) { const b = $('navReports'); if (b) { b.textContent = count; b.classList.remove('hidden'); } } return; }
+    if (count > lastReportCount && currentTab !== 'reports') {
+      const b = $('navReports'); if (b) { b.textContent = count; b.classList.remove('hidden'); }
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        new Notification('SuccubusStats — Bug report', { body: (count - lastReportCount) === 1 ? '1 nouveau rapport.' : `${count - lastReportCount} nouveaux rapports.`, silent: false });
       }
     }
-    el.innerHTML = html;
-  } catch(e) {
-    el.innerHTML = '<span class="update-none">Unable to fetch</span>';
-  }
+    lastReportCount = count;
+  } catch (e) {}
 }
 
+// ===================================================================
+//  GAME UPDATE
+// ===================================================================
+const _updateStagedFiles = [];
+function formatBytes(n) { if (n < 1024) return n + ' B'; if (n < 1048576) return (n/1024).toFixed(1)+' KB'; return (n/1048576).toFixed(1)+' MB'; }
 function guessDir(name) {
   const ext = name.split('.').pop().toLowerCase();
   if (ext === 'js') return 'www/js/plugins/';
@@ -910,35 +600,34 @@ function guessDir(name) {
   if (['ogg','mp3','wav','m4a'].includes(ext)) return 'www/audio/';
   return 'www/';
 }
-
-function renderStagedFiles() {
-  const el = $('updateFileList');
-  if (!el) return;
-  if (_updateStagedFiles.length === 0) { el.innerHTML = ''; return; }
-  el.innerHTML = _updateStagedFiles.map((f, i) => `
-    <div class="update-file-item">
-      <span class="file-name">${f.name}</span>
-      <input class="file-path-input" data-idx="${i}" value="${f.dir}" spellcheck="false">
-      <span class="file-size">${formatBytes(f.size)}</span>
-      <button class="file-remove" data-idx="${i}">&times;</button>
-    </div>
-  `).join('');
-  el.querySelectorAll('.file-remove').forEach(btn => {
-    btn.addEventListener('click', () => {
-      _updateStagedFiles.splice(parseInt(btn.dataset.idx, 10), 1);
-      renderStagedFiles();
-    });
-  });
-  el.querySelectorAll('.file-path-input').forEach(inp => {
-    inp.addEventListener('change', () => {
-      let v = inp.value.replace(/\\/g, '/').trim();
-      if (v && !v.endsWith('/')) v += '/';
-      _updateStagedFiles[parseInt(inp.dataset.idx, 10)].dir = v;
-    });
-  });
+async function fetchCurrentUpdate() {
+  try {
+    const data = await api('/v1/game/update/admin');
+    const m = data && data.manifest;
+    const ver = $('curUpdVersion'), name = $('curUpdName'), files = $('curUpdFiles');
+    if (!m || !m.version) { if (ver) ver.textContent = '—'; if (name) name.textContent = 'no update staged'; if (files) files.innerHTML = '<div style="color:#6f5a80">— none —</div>'; return; }
+    if (ver) ver.textContent = 'v' + m.version;
+    if (name) name.textContent = Array.isArray(m.files) ? `${m.files.length} file(s) on relay` : 'staged';
+    if (files && Array.isArray(m.files)) files.innerHTML = m.files.map(f => `<div style="display:flex;gap:10px"><span style="color:#e9b95f;flex:none">✦</span>${esc(f.filename || (f.path||'').split('/').pop() || '?')}</div>`).join('');
+  } catch (e) {}
 }
-
-function addFiles(fileList) {
+function renderStagedFiles() {
+  const el = $('updFileList');
+  if (!el) return;
+  el.innerHTML = _updateStagedFiles.map((f, i) => `
+    <div class="upd-file">
+      <span style="flex:none;font-size:12px;color:#e9d5f0;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</span>
+      <input data-idx="${i}" value="${esc(f.dir)}" spellcheck="false">
+      <span style="font-size:11px;color:#9d84ad;flex:none">${formatBytes(f.size)}</span>
+      <button class="rm" data-idx="${i}">&times;</button>
+    </div>`).join('');
+  el.querySelectorAll('.rm').forEach(b => b.addEventListener('click', () => { _updateStagedFiles.splice(parseInt(b.dataset.idx,10),1); renderStagedFiles(); }));
+  el.querySelectorAll('input[data-idx]').forEach(inp => inp.addEventListener('change', () => {
+    let v = inp.value.replace(/\\/g,'/').trim(); if (v && !v.endsWith('/')) v += '/';
+    _updateStagedFiles[parseInt(inp.dataset.idx,10)].dir = v;
+  }));
+}
+function addUpdateFiles(fileList) {
   for (const file of fileList) {
     if (_updateStagedFiles.some(f => f.name === file.name)) continue;
     const dir = guessDir(file.name);
@@ -951,72 +640,385 @@ function addFiles(fileList) {
     reader.readAsArrayBuffer(file);
   }
 }
-
-// Drop zone
-const dropZone = $('updateDropZone');
-const fileInput = $('updateFileInput');
-if (dropZone && fileInput) {
-  dropZone.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', () => { if (fileInput.files.length) addFiles(fileInput.files); fileInput.value = ''; });
-  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
-  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-  dropZone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropZone.classList.remove('dragover');
-    if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
-  });
-}
-
-// Publish
-$('updatePublish')?.addEventListener('click', async () => {
+async function publishUpdate() {
   if (!cfg.url || !cfg.token) return alert('Configure settings first.');
-  const version = ($('updateVersion')?.value || '').trim();
+  const version = ($('updVersion').value || '').trim();
   if (!version) return alert('Enter a version number.');
   if (_updateStagedFiles.length === 0) return alert('Add at least one file.');
-
-  const files = _updateStagedFiles.map(f => ({
-    name: f.name,
-    path: f.dir + f.name,
-    content: f.content
-  }));
-
-  const btn = $('updatePublish');
-  if (btn) { btn.disabled = true; btn.textContent = 'Publishing...'; }
-
+  const files = _updateStagedFiles.map(f => ({ name: f.name, path: f.dir + f.name, content: f.content }));
+  const btn = $('updPublish'); if (btn) btn.style.opacity = '0.6';
   try {
     const res = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/game/update', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ version, files })
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    _updateStagedFiles.length = 0;
-    renderStagedFiles();
-    if ($('updateVersion')) $('updateVersion').value = '';
+    _updateStagedFiles.length = 0; renderStagedFiles();
+    $('updVersion').value = '';
     fetchCurrentUpdate();
-    alert('Update v' + version + ' published!');
-  } catch(e) {
-    alert('Failed to publish: ' + e.message);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Publish update'; }
-  }
-});
-
-// Clear
-$('updateClear')?.addEventListener('click', async () => {
+    const toast = $('updToast'); if (toast) { toast.textContent = `✦ v${version} deployed — players will receive it on next launch.`; toast.classList.remove('hidden'); setTimeout(() => toast.classList.add('hidden'), 5000); }
+  } catch (e) { alert('Failed to publish: ' + e.message); }
+  finally { if (btn) btn.style.opacity = ''; }
+}
+async function clearUpdate() {
   if (!cfg.url || !cfg.token) return alert('Configure settings first.');
   if (!confirm('Clear the current game update? Players will no longer receive it.')) return;
   try {
-    const res = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/game/update', {
-      method: 'DELETE',
-      headers: { 'Authorization': 'Bearer ' + cfg.token }
-    });
+    const res = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/game/update', { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + cfg.token } });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     fetchCurrentUpdate();
-    alert('Update cleared.');
-  } catch(e) {
-    alert('Failed to clear: ' + e.message);
+  } catch (e) { alert('Failed to clear: ' + e.message); }
+}
+
+// ===================================================================
+//  SETTINGS
+// ===================================================================
+function populateSettings() {
+  if ($('cfgUrl')) $('cfgUrl').value = cfg.url || '';
+  if ($('cfgToken')) $('cfgToken').value = cfg.token || '';
+  const el = $('appVersionLabel');
+  if (el) el.innerHTML = 'SuccubusStats v' + esc(APP_VERSION) + ' · made by Henergyque · Kutushmurf est un enculé';
+}
+async function testConnection() {
+  const btn = $('cfgTest');
+  const url = ($('cfgUrl').value || '').trim(), token = ($('cfgToken').value || '').trim();
+  if (!url || !token) { if (btn) btn.textContent = 'FILL URL + TOKEN'; return; }
+  if (btn) btn.textContent = 'DIVINING…';
+  try {
+    const res = await fetch(url.replace(/\/+$/, '') + '/v1/version', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (btn) {
+      if (res.ok) { btn.textContent = '✦ LINK BLESSED'; btn.style.color = '#7dffc4'; btn.style.borderColor = 'rgba(95,255,178,.5)'; }
+      else { btn.textContent = '✗ HTTP ' + res.status; }
+      setTimeout(() => { btn.textContent = 'TEST LINK'; btn.style.color = ''; btn.style.borderColor = ''; }, 2600);
+    }
+  } catch (e) { if (btn) { btn.textContent = '✗ NO LINK'; setTimeout(() => btn.textContent = 'TEST LINK', 2600); } }
+}
+function saveSettings() {
+  cfg = { url: ($('cfgUrl').value || '').trim(), token: ($('cfgToken').value || '').trim() };
+  saveCfg(cfg);
+  if (ws) { try { ws.close(); } catch (e) {} }
+  connect();
+  const btn = $('cfgSave');
+  if (btn) { const label = btn.childNodes[0]; if (label) label.textContent = '✦ SIGIL SEALED'; setTimeout(() => { if (label) label.textContent = 'SEAL THE PACT'; }, 2400); }
+  switchTab('live');
+}
+
+// ===================================================================
+//  TABS
+// ===================================================================
+const TAB_META = {
+  live: ['Live', 'real-time player activity'],
+  announce: ['Announcements', 'broadcast a message to all online players'],
+  reports: ['Error Reports', 'bugs and stack traces from the game'],
+  update: ['Game Update', 'deploy a new version to all players'],
+  settings: ['Settings', 'connection and configuration']
+};
+function switchTab(tab) {
+  if (!TAB_META[tab]) return;
+  const changed = tab !== currentTab;
+  currentTab = tab;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.tab === tab));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab));
+  $('tabTitle').textContent = TAB_META[tab][0];
+  $('tabSubtitle').textContent = TAB_META[tab][1];
+  if (changed) { const veil = $('veil'); if (veil) { veil.classList.remove('on'); void veil.offsetWidth; veil.classList.add('on'); setTimeout(() => veil.classList.remove('on'), 760); } }
+  if (tab === 'announce') { fetchAnnouncement(); populateAnnounceForm(); }
+  if (tab === 'reports') { fetchReports(); const b = $('navReports'); if (b) b.classList.add('hidden'); }
+  if (tab === 'update') fetchCurrentUpdate();
+  if (tab === 'settings') populateSettings();
+}
+
+// ===================================================================
+//  PARTICLES (port de la maquette)
+// ===================================================================
+function startParticles() {
+  const canvas = $('particles'); if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const density = 90;
+  const hues = [316, 275, 350, 43];
+  const sprites = hues.map(h => {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const x = c.getContext('2d');
+    const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, `hsla(${h},95%,72%,.9)`);
+    g.addColorStop(0.35, `hsla(${h},90%,60%,.38)`);
+    g.addColorStop(1, `hsla(${h},90%,55%,0)`);
+    x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+    return c;
+  });
+  let W, H;
+  const fit = () => { W = canvas.width = canvas.offsetWidth * devicePixelRatio; H = canvas.height = canvas.offsetHeight * devicePixelRatio; };
+  fit(); window.addEventListener('resize', fit);
+  const R = Math.random;
+  const parts = Array.from({ length: density }, () => ({ x: R(), y: R(), z: 0.25 + R()*0.75, s: 0.5 + R()*1.4, hue: Math.floor(R()*sprites.length), drift: 0.4 + R()*1.2, ph: R()*Math.PI*2 }));
+  const mouse = { x: 0.5, y: 0.5 };
+  window.addEventListener('mousemove', e => { mouse.x = e.clientX / innerWidth; mouse.y = e.clientY / innerHeight; });
+  let t = 0;
+  const frame = () => {
+    t += 0.008;
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+    for (const p of parts) {
+      p.y -= 0.00035 * p.z * p.drift;
+      p.x += Math.sin(t * p.drift + p.ph) * 0.00022;
+      if (p.y < -0.05) { p.y = 1.05; p.x = R(); }
+      const px = (p.x + (mouse.x - 0.5) * 0.055 * p.z) * W;
+      const py = (p.y + (mouse.y - 0.5) * 0.045 * p.z) * H;
+      const size = (10 + 42 * p.s) * p.z * devicePixelRatio * (1 + 0.18 * Math.sin(t * 2.2 + p.ph));
+      ctx.globalAlpha = 0.28 + 0.5 * p.z;
+      ctx.drawImage(sprites[p.hue], px - size/2, py - size/2, size, size);
+    }
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+
+// ---------- clock ----------
+function tickClock() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  if ($('clock')) $('clock').textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  if ($('dateStr')) $('dateStr').textContent = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
+}
+
+// ---------- link status / latency ----------
+const _pingHistory = [];   // rolling window: true = ok, false = fail
+const _PING_WINDOW  = 100; // last 100 pings (~16 min at 10s interval)
+
+function setLink(up) {
+  const el = $('linkStatus'), lbl = $('linkLabel');
+  if (!el) return;
+  el.classList.toggle('down', !up);
+  if (lbl) lbl.textContent = up ? 'LINK STABLE' : 'LINK LOST';
+}
+
+function _updateRelayUI(latencyMs, uptimeSec, success) {
+  // relay name: extract first segment of hostname from configured URL
+  const relayEl = $('relayName');
+  if (relayEl && cfg.url) {
+    try {
+      const host = new URL(cfg.url).hostname;  // e.g. "succubus-games-production.up.railway.app"
+      const slug = host.split('.')[0];          // "succubus-games-production"
+      relayEl.textContent = slug;
+    } catch (e) { relayEl.textContent = '—'; }
   }
+
+  // latency
+  if ($('latency')) $('latency').textContent = success ? latencyMs : '—';
+
+  // rolling uptime %
+  _pingHistory.push(success);
+  if (_pingHistory.length > _PING_WINDOW) _pingHistory.shift();
+  const pct = (_pingHistory.filter(Boolean).length / _pingHistory.length * 100).toFixed(2);
+  const uptEl = $('linkUptime');
+  if (uptEl) uptEl.textContent = pct + '%';
+
+  // "up" badge text: server uptime if known, else "up"
+  const badge = $('linkUpBadge');
+  if (badge && success && uptimeSec != null) {
+    const h = Math.floor(uptimeSec / 3600), m = Math.floor((uptimeSec % 3600) / 60);
+    const upStr = h > 0 ? `${h}h${String(m).padStart(2,'0')}` : `${m}m`;
+    badge.childNodes[0].textContent = upStr + '\n';
+  }
+}
+
+async function pingLatency() {
+  if (!cfg.url) return;
+  const t0 = performance.now();
+  try {
+    const res = await fetch(cfg.url.replace(/\/+$/, '') + '/health', { cache: 'no-store' });
+    const ms = Math.round(performance.now() - t0);
+    let uptimeSec = null;
+    try { const j = await res.json(); uptimeSec = j.uptimeSec ?? null; } catch (e) {}
+    _updateRelayUI(ms, uptimeSec, true);
+  } catch (e) {
+    _updateRelayUI(0, null, false);
+  }
+}
+
+// ===================================================================
+//  AUTO-UPDATE (desktop) — conservé de l'ancien dashboard
+// ===================================================================
+function hideUpdateNotice() { const el = $('updateNotice'); if (el) { el.classList.add('hidden'); el.innerHTML = ''; } }
+function showUpdateModal(version, url, notes) {
+  if (document.getElementById('sgUpdateModal')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'sgUpdateModal';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#1a0d2e;border:1px solid rgba(234,173,229,0.3);border-radius:12px;padding:32px;width:480px;max-width:90vw';
+  box.innerHTML = `
+    <h2 style="color:#eaade5;margin:0 0 10px;font-size:18px">Update available — v${esc(version)}</h2>
+    ${notes ? `<p style="color:#9a7aaa;font-size:13px;margin:0 0 20px;white-space:pre-wrap;max-height:120px;overflow-y:auto">${esc(notes)}</p>` : '<p style="color:#9a7aaa;font-size:13px;margin:0 0 20px">A new version is ready to install.</p>'}
+    <div id="sgUpdateProgress" style="display:none;margin-bottom:16px"><div style="background:#2c1a40;border-radius:4px;height:6px;overflow:hidden"><div id="sgUpdateBar" style="background:#eaade5;height:100%;width:0%;transition:width 0.3s"></div></div><p id="sgUpdateText" style="color:#9a7aaa;font-size:12px;margin:6px 0 0"></p></div>
+    <div style="display:flex;gap:12px;justify-content:flex-end">
+      <button id="sgUpdateLater" style="background:transparent;color:#6a4870;border:1px solid #3a2450;border-radius:6px;padding:8px 18px;cursor:pointer;font-size:13px">Later</button>
+      <button id="sgUpdateInstall" style="background:rgba(234,173,229,0.15);color:#eaade5;border:1px solid rgba(234,173,229,0.4);border-radius:6px;padding:8px 20px;cursor:pointer;font-size:13px">Install &amp; Restart</button>
+    </div>`;
+  overlay.appendChild(box); document.body.appendChild(overlay);
+  document.getElementById('sgUpdateLater').onclick = () => overlay.remove();
+  document.getElementById('sgUpdateInstall').onclick = () => {
+    document.getElementById('sgUpdateLater').style.display = 'none';
+    document.getElementById('sgUpdateInstall').disabled = true;
+    document.getElementById('sgUpdateInstall').textContent = 'Installing…';
+    document.getElementById('sgUpdateProgress').style.display = 'block';
+    installUpdate(url, version);
+  };
+}
+function installUpdate(url, targetVersion) {
+  if (!_nw) return;
+  const { path, fs, os, https, http, cp } = _nw;
+  const bar = document.getElementById('sgUpdateBar'), txt = document.getElementById('sgUpdateText');
+  const setTxt = t => { if (txt) txt.textContent = t; }, setBar = p => { if (bar) bar.style.width = p + '%'; };
+  const tmpZip = path.join(os.tmpdir(), 'sg-dashboard-update.zip');
+  const exePath = process.execPath, packageNwDir = path.join(path.dirname(exePath), 'package.nw');
+  setTxt('Downloading…');
+  function doGet(getUrl, cb) {
+    const parsed = new URL(getUrl); const transport = parsed.protocol === 'https:' ? https : http;
+    transport.get(getUrl, (res) => {
+      if ([301,302,307,308].includes(res.statusCode) && res.headers.location) { res.resume(); doGet(res.headers.location, cb); }
+      else cb(null, res);
+    }).on('error', err => cb(err));
+  }
+  doGet(url, (err, res) => {
+    if (err) { setTxt('✗ ' + err.message); return; }
+    const total = parseInt(res.headers['content-length'] || '0', 10); let done = 0;
+    const file = fs.createWriteStream(tmpZip);
+    res.on('data', c => { done += c.length; if (total > 0) setBar(Math.round(done/total*100)); });
+    res.pipe(file);
+    file.on('finish', () => {
+      file.close(); setBar(100); setTxt('Extracting…');
+      const ps = `Expand-Archive -LiteralPath '${tmpZip.replace(/'/g,"''")}' -DestinationPath '${packageNwDir.replace(/'/g,"''")}' -Force`;
+      cp.execFile('powershell', ['-NoProfile','-NonInteractive','-Command', ps], (err2) => {
+        try { fs.unlinkSync(tmpZip); } catch (e) {}
+        if (err2) { setTxt('✗ Failed: ' + err2.message); return; }
+        try { if (targetVersion) fs.writeFileSync(path.join(packageNwDir, '.sg_version'), targetVersion); } catch (e) {}
+        setTxt('Restarting…');
+        const bat = `@echo off\r\ntimeout /t 2 /nobreak > nul\r\nstart "" "${exePath}"\r\ndel "%~f0"\r\n`;
+        const batPath = path.join(os.tmpdir(), 'sg-relaunch.bat');
+        fs.writeFileSync(batPath, bat);
+        cp.spawn('cmd.exe', ['/c', batPath], { detached: true, stdio: 'ignore' }).unref();
+        setTimeout(() => nw.App.quit(), 600);
+      });
+    });
+    file.on('error', e => { fs.unlink(tmpZip, () => {}); setTxt('✗ ' + e.message); });
+  });
+}
+async function checkVersion() {
+  try {
+    const data = await api('/v1/version');
+    const latest = String(data && data.latest || '').trim();
+    const url = String(data && data.url || '').trim();
+    const notes = String(data && data.notes || '').trim();
+    if (!latest) return;
+    if (latest !== APP_VERSION) {
+      if (_nw && url) showUpdateModal(latest, url, notes);
+      else { const el = $('updateNotice'); if (el) { el.classList.remove('hidden'); el.innerHTML = `New version available: <strong>${esc(latest)}</strong>`; } }
+    } else hideUpdateNotice();
+  } catch (e) {}
+}
+
+// ===================================================================
+//  WEBSOCKET
+// ===================================================================
+function connect() {
+  if (!cfg.url || !cfg.token) { setLink(false); switchTab('settings'); return; }
+  setLink(false);
+  const wsUrl = cfg.url.replace(/^http/, 'ws').replace(/\/+$/, '') + '/v1/stream?token=' + encodeURIComponent(cfg.token);
+  try { ws = new WebSocket(wsUrl); } catch (e) { setLink(false); return; }
+  ws.onopen = () => {
+    setLink(true);
+    refreshDropoff(); refreshConcurrent(); refreshNewPlayers();
+    checkVersion(); fetchAnnouncement(); fetchToday(); checkReportsBadge();
+    fetchZoneLabels(); fetchPlatforms(); fetchSessionStats(); fetchLanguages();
+    pingLatency();
+  };
+  ws.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'snapshot') { lastWsTs = Date.now(); renderLive(msg.live); }
+      if (msg.type === 'bug_report') {
+        if (currentTab === 'reports') fetchReports();
+        else { const b = $('navReports'); if (b) { b.classList.remove('hidden'); } checkReportsBadge(); }
+      }
+    } catch (e) {}
+  };
+  ws.onclose = () => { setLink(false); if (reconnectTimer) clearTimeout(reconnectTimer); reconnectTimer = setTimeout(connect, 3000); };
+  ws.onerror = () => { try { ws.close(); } catch (e) {} };
+}
+
+// live polling fallback
+let _liveEndpointExists = true;
+async function pollLive() {
+  if (!cfg.url || !cfg.token || !_liveEndpointExists) return;
+  if (Date.now() - lastWsTs < 4000) return;
+  try { const data = await api('/v1/live'); if (data && data.live) renderLive(data.live); }
+  catch (e) { if (e.message && e.message.includes('404')) _liveEndpointExists = false; }
+}
+
+// ===================================================================
+//  EVENT WIRING
+// ===================================================================
+document.querySelectorAll('.nav-item').forEach(n => n.addEventListener('click', () => switchTab(n.dataset.tab)));
+$('ccPills').querySelectorAll('.pill').forEach(b => b.addEventListener('click', () => {
+  $('ccPills').querySelectorAll('.pill').forEach(x => x.classList.remove('active-cc'));
+  b.classList.add('active-cc'); ccRange = b.dataset.r; refreshConcurrent();
+}));
+$('npPills').querySelectorAll('.pill').forEach(b => b.addEventListener('click', () => {
+  $('npPills').querySelectorAll('.pill').forEach(x => x.classList.remove('active-np'));
+  b.classList.add('active-np'); npRange = parseInt(b.dataset.r, 10); refreshNewPlayers();
+}));
+$('zoneEditBtn').addEventListener('click', () => { if (zoneEditMode) closeZoneEditorAndSave(); else openZoneEditor(); });
+$('annPublish').addEventListener('click', publishAnnouncement);
+$('annDelete').addEventListener('click', deleteAnnouncement);
+$('reportsExport').addEventListener('click', exportReportsCSV);
+$('reportsClear').addEventListener('click', clearReports);
+$('updPublish').addEventListener('click', publishUpdate);
+$('updClear').addEventListener('click', clearUpdate);
+$('cfgSave').addEventListener('click', saveSettings);
+$('cfgTest').addEventListener('click', testConnection);
+$('tokenToggle').addEventListener('click', () => {
+  const inp = $('cfgToken'), btn = $('tokenToggle');
+  if (inp.type === 'password') { inp.type = 'text'; btn.textContent = 'HIDE'; } else { inp.type = 'password'; btn.textContent = 'REVEAL'; }
+});
+// update dropzone
+const _dz = $('updDropzone'), _fi = $('updFileInput');
+if (_dz && _fi) {
+  _fi.addEventListener('change', () => { if (_fi.files.length) addUpdateFiles(_fi.files); _fi.value = ''; });
+  _dz.addEventListener('dragover', (e) => { e.preventDefault(); _dz.classList.add('drag'); $('dropTitle').textContent = 'Release to bind the archive'; });
+  _dz.addEventListener('dragleave', () => { _dz.classList.remove('drag'); $('dropTitle').textContent = 'Drag the plugin files here'; });
+  _dz.addEventListener('drop', (e) => { e.preventDefault(); _dz.classList.remove('drag'); $('dropTitle').textContent = 'Drag the plugin files here'; if (e.dataTransfer.files.length) addUpdateFiles(e.dataTransfer.files); });
+}
+// Fullscreen F11
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'F11') { e.preventDefault(); if (typeof nw !== 'undefined') { const win = nw.Window.get(); if (win.isFullscreen) win.leaveFullscreen(); else win.enterFullscreen(); } }
 });
 
+// ===================================================================
+//  INTERVALS
+// ===================================================================
+setInterval(pollLive, 3000);
+setInterval(refreshDropoff, 60 * 1000);
+setInterval(refreshConcurrent, 5 * 60 * 1000);
+setInterval(refreshNewPlayers, 5 * 60 * 1000);
+setInterval(fetchPlatforms, 5 * 1000);
+setInterval(fetchSessionStats, 5 * 1000);
+setInterval(fetchZoneLabels, 5 * 1000);
+setInterval(fetchLanguages, 5 * 1000);
+setInterval(fetchToday, 60 * 1000);
+setInterval(checkReportsBadge, 60 * 1000);
+setInterval(checkVersion, VERSION_CHECK_INTERVAL_MS);
+setInterval(fetchAnnouncement, 5 * 60 * 1000);
+setInterval(tickClock, 1000);
+setInterval(pingLatency, 10 * 1000);
+
+// ===================================================================
+//  BOOT
+// ===================================================================
+if (typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission();
+buildStatCards();
+startParticles();
+tickClock();
+if ($('buildVer')) $('buildVer').textContent = APP_VERSION;
+populateSettings();
+checkReportsBadge();
 connect();
