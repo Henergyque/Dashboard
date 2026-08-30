@@ -131,8 +131,13 @@ function buildChartSVG(id, vals, labels, color, glowColor, h, zeroBase) {
   if (vals.length === 1) vals = [vals[0], vals[0]];
   const W = 1000, padL = 52, padR = 20, padT = 16, padB = 34;
   const mx = Math.max(...vals);
-  let mn = zeroBase ? 0 : Math.min(...vals) * 0.86;
+  const lo = Math.min(...vals);
+  let mn = zeroBase ? 0 : lo * 0.86;
   let top = mx * 1.06;
+  /* Courbe parfaitement plate : etaler l'echelle autour de la valeur ferait
+     apparaitre des graduations que personne n'a jamais atteintes (un axe
+     "6, 7" pour une courbe constante a 7). On la serre sur la seule valeur. */
+  if (lo === mx && !zeroBase) { mn = mx - 0.5; top = mx + 0.5; }
   if (top <= mn) top = mn + 1;
   const vdenom = Math.max(1, vals.length - 1);
   const ldenom = Math.max(1, labels.length - 1);
@@ -141,7 +146,23 @@ function buildChartSVG(id, vals, labels, color, glowColor, h, zeroBase) {
   const pts = vals.map((v, i) => [X(i), Y(v)]);
   const line = smoothPath(pts);
   const area = line + `L${X(vals.length-1).toFixed(1)} ${h-padB}L${padL} ${h-padB}Z`;
-  const ticks = [0,1,2,3].map(i => mn + ((top - mn) * i) / 3);
+  /* Sur une plage etroite — tout le monde a 1 joueur — les quatre graduations
+     arrondissaient a la meme valeur et l'axe affichait "1 1 1 1". On ne garde
+     que les valeurs entieres distinctes. */
+  let ticks;
+  if (lo === mx) {
+    // courbe plate : une seule graduation, sur la valeur reelle
+    ticks = [mx];
+  } else {
+    ticks = [0,1,2,3].map(i => mn + ((top - mn) * i) / 3);
+    const seen = new Set();
+    ticks = ticks.filter((tv) => {
+      const k = Math.round(tv);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }
   const last = pts[pts.length - 1];
   let svg = `<svg viewBox="0 0 ${W} ${h}" style="width:100%;height:auto;display:block;overflow:visible">`;
   svg += `<defs><linearGradient id="g${id}" x1="0" y1="0" x2="0" y2="1">`;
@@ -282,10 +303,15 @@ function renderZones(byZone) {
 function renderConcurrent(points) {
   points = points || [];
   const vals = points.map(p => p.count | 0);
+  /* Tant que l'historique tient dans une seule journee — au lendemain d'une
+     sortie, par exemple — afficher la date donnait sept fois le meme jour.
+     On bascule alors sur l'heure, quelle que soit la plage demandee. */
+  const days = new Set(points.map(p => new Date(p.bucket).toDateString()));
+  const sameDay = days.size <= 1;
   const labels = sampleLabels(points, 7, (p, isLast) => {
     if (isLast) return 'now';
     const d = new Date(p.bucket);
-    return ccRange === '24h'
+    return (ccRange === '24h' || sameDay)
       ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       : d.toLocaleDateString([], { month: 'short', day: '2-digit' });
   });
