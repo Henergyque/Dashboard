@@ -143,7 +143,8 @@ input:focus, textarea:focus {
 .mini-label { font-size:10.5px; font-weight:600; letter-spacing:2.2px; color:#9d84ad; text-transform:uppercase; }
 .divider { height:1px; background:linear-gradient(90deg,transparent,rgba(233,185,95,.3),transparent); }
 .grid12 { display:grid; grid-template-columns:repeat(12,1fr); gap:18px; }
-.col3 { grid-column:span 3; } .col4 { grid-column:span 4; } .col8 { grid-column:span 8; } .col12 { grid-column:span 12; }
+.col3 { grid-column:span 3; } .col4 { grid-column:span 4; } .col5 { grid-column:span 5; }
+.col7 { grid-column:span 7; } .col8 { grid-column:span 8; } .col12 { grid-column:span 12; }
 
 /* form fields */
 .field { width:100%; padding:12px 14px; border-radius:11px; background:rgba(10,4,16,.7); border:1px solid rgba(255,110,180,.22); color:#f6ecf7; font-size:13.5px; transition:border-color .25s, box-shadow .25s; }
@@ -199,7 +200,7 @@ textarea.field { resize:vertical; line-height:1.6; }
 .drop-pct { width:52px; text-align:right; font-variant-numeric:tabular-nums; color:#ff8a97; font-weight:600; }
 
 /* reports table */
-.rep-head, .rep-row { display:grid; grid-template-columns:64px 1.6fr 150px 64px 100px 110px 84px; gap:12px; padding:13px 20px; align-items:center; }
+.rep-head, .rep-row { display:grid; grid-template-columns:64px 1.6fr 150px 64px 100px 110px 84px 34px; gap:12px; padding:13px 20px; align-items:center; }
 .rep-head { font-size:10px; font-weight:700; letter-spacing:1.8px; color:#9d84ad; border-bottom:1px solid rgba(233,185,95,.18); background:rgba(10,4,16,.5); }
 .rep-row { font-size:12.5px; border-bottom:1px solid rgba(255,255,255,.04); transition:background .2s; }
 .rep-row:hover { background:rgba(255,61,129,.06); }
@@ -221,7 +222,29 @@ textarea.field { resize:vertical; line-height:1.6; }
 .dropzone.drag { border-color:rgba(95,255,178,.8); background:rgba(95,255,178,.07); }
 .upd-file { display:flex; align-items:center; gap:12px; margin-top:10px; padding:10px 14px; border-radius:11px; background:rgba(10,4,16,.6); border:1px solid rgba(255,110,180,.18); }
 .upd-file input { flex:1; min-width:0; padding:6px 9px; border-radius:8px; background:rgba(10,4,16,.7); border:1px solid rgba(255,110,180,.18); color:#cdb8d8; font-size:11.5px; font-family:ui-monospace,monospace; }
-.upd-file .rm { flex:none; width:28px; height:28px; border-radius:8px; border:1px solid rgba(255,71,87,.35); background:rgba(255,71,87,.10); color:#ff8a97; cursor:pointer; }
+/* le petit carré rouge sert aussi à retirer un report ligne à ligne */
+.upd-file .rm, .rep-row .rm { flex:none; width:28px; height:28px; border-radius:8px; border:1px solid rgba(255,71,87,.35); background:rgba(255,71,87,.10); color:#ff8a97; cursor:pointer; }
+.rep-row .rm { font-size:15px; line-height:1; opacity:.45; transition:opacity .2s, background .2s; }
+.rep-row:hover .rm { opacity:1; }
+.rep-row .rm:hover { background:rgba(255,71,87,.25); }
+
+/* surveys — l'éditeur réutilise la ligne de fichier staged, même besoin :
+   un libellé éditable et une croix pour retirer */
+.sv-opt { display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:10px; background:rgba(10,4,16,.6); border:1px solid rgba(160,107,255,.18); }
+.sv-opt input.slug { flex:none; width:104px; padding:6px 9px; border-radius:8px; background:rgba(10,4,16,.7); border:1px solid rgba(160,107,255,.18); color:#9d84ad; font-size:11px; font-family:ui-monospace,monospace; }
+.sv-opt input.lab { flex:1; min-width:0; padding:6px 9px; border-radius:8px; background:rgba(10,4,16,.7); border:1px solid rgba(160,107,255,.18); color:#e9d5f0; font-size:12.5px; }
+.sv-opt .rm { flex:none; width:26px; height:26px; border-radius:7px; border:1px solid rgba(255,71,87,.35); background:rgba(255,71,87,.10); color:#ff8a97; cursor:pointer; font-size:14px; line-height:1; }
+.sv-opt .rm:hover { background:rgba(255,71,87,.25); }
+
+/* onglet de langue : plein = traduit, creux = à remplir */
+.sv-lang { padding:4px 11px; border-radius:20px; font-size:11px; cursor:pointer; border:1px solid rgba(160,107,255,.28); background:transparent; color:#6f5a80; transition:all .2s; }
+.sv-lang.filled { color:#d6c2f5; background:rgba(160,107,255,.10); }
+.sv-lang.active { border-color:#e9b95f; color:#ffd98a; background:rgba(233,185,95,.12); }
+
+.sv-q { padding:12px 16px; border-radius:12px; background:rgba(10,4,16,.55); border:1px solid rgba(160,107,255,.16); }
+.sv-q.off { opacity:.5; }
+.sv-bar { height:9px; border-radius:6px; background:rgba(255,255,255,.06); overflow:hidden; }
+.sv-bar > i { display:block; height:100%; border-radius:6px; background:linear-gradient(90deg,#b98aff,#ff5e97); }
 
 .hidden { display:none !important; }
 

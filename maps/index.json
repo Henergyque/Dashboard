@@ -1,0 +1,77 @@
+{
+  "tileSize": 48,
+  "maps": {
+    "6": {
+      "name": "Jeu 1-1",
+      "width": 21,
+      "height": 15,
+      "file": "map6.png"
+    },
+    "9": {
+      "name": "Jeu 1-3",
+      "width": 21,
+      "height": 31,
+      "file": "map9.png"
+    },
+    "11": {
+      "name": "Jeu 1-6",
+      "width": 25,
+      "height": 15,
+      "file": "map11.png"
+    },
+    "12": {
+      "name": "Jeu 1-7",
+      "width": 39,
+      "height": 41,
+      "file": "map12.png"
+    },
+    "19": {
+      "name": "Jeu 2-2 (Gauche)",
+      "width": 40,
+      "height": 35,
+      "file": "map19.png"
+    },
+    "22": {
+      "name": "Jeu 2-2 (Grotte)",
+      "width": 37,
+      "height": 47,
+      "file": "map22.png"
+    },
+    "23": {
+      "name": "Jeu 2-3 (Droite)",
+      "width": 31,
+      "height": 41,
+      "file": "map23.png"
+    },
+    "24": {
+      "name": "Jeu 2-3 (Grotte)",
+      "width": 41,
+      "height": 33,
+      "file": "map24.png"
+    },
+    "26": {
+      "name": "Jeu 2-3 (Sommet)",
+      "width": 39,
+      "height": 50,
+      "file": "map26.png"
+    },
+    "27": {
+      "name": "Jeu 2-3 (Grotte Fin)",
+      "width": 26,
+      "height": 35,
+      "file": "map27.png"
+    },
+    "28": {
+      "name": "Jeu 2-2 (Buissons)",
+      "width": 45,
+      "height": 39,
+      "file": "map28.png"
+    },
+    "31": {
+      "name": "Jeu 2-4 (Arbre Inside)",
+      "width": 61,
+      "height": 63,
+      "file": "map31.png"
+    }
+  }
+}

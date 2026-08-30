@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Create update zip
-        run: zip -r dashboard.zip app.js index.html dashboard.css package.json icon.png succubus.png vendor/
+        run: zip -r dashboard.zip app.js index.html dashboard.css package.json icon.png succubus.png maps/
 
       - name: Publish release
         uses: ncipollo/release-action@v1

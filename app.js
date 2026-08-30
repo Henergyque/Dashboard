@@ -25,7 +25,8 @@ const MAP_NAMES = {
   17:'Chambre Succube - Final',18:'Jeu 2-1 (Hub)',19:'Jeu 2-2 (Gauche)',20:'Game Over Room',
   21:'Jeu 2-2 (Bonus Gauche)',22:'Jeu 2-2 (Grotte)',23:'Jeu 2-3 (Droite)',24:'Jeu 2-3 (Grotte)',
   25:'Jeu 2-3 (Bonus)',26:'Jeu 2-3 (Sommet)',27:'Jeu 2-3 (Grotte Fin)',28:'Jeu 2-2 (Buissons)',
-  29:'Jeu 2-2 (Bonus Buissons)',30:'Jeu 2-4 (Arbre Outside)',31:'Jeu 2-4 (Arbre Inside)'
+  29:'Jeu 2-2 (Bonus Buissons)',30:'Jeu 2-4 (Arbre Outside)',31:'Jeu 2-4 (Arbre Inside)',
+  32:'Jeu 2-4 (Bonus Arbre)'
 };
 const mapLabel = (id) => MAP_NAMES[id] ? `${MAP_NAMES[id]} (#${id})` : `Map ${id}`;
 
@@ -73,6 +74,15 @@ function durShort(ms) {
   if (h > 0) return m > 0 ? `${h}h${String(m).padStart(2,'0')}` : `${h}h`;
   if (m > 0) return `${m}m`;
   return `${s}s`;
+}
+// « il y a » compact, pour les colonnes étroites (retardataires, morts)
+function agoShort(ts) {
+  if (!ts) return '—';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return 'now';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
 }
 
 // ---------- State ----------
@@ -309,6 +319,62 @@ function renderPlatforms(data) {
     </div>`).join('') || '<span style="color:#6f5a80;font-size:12px">no data yet</span>';
 }
 
+// Palette tournante : le nombre de versions n'est pas connu d'avance, contrairement
+// aux plateformes qui ont chacune leur couleur fixe.
+const VERSION_COLORS = [
+  'linear-gradient(180deg,#ff5e97,#d92665)',
+  'linear-gradient(180deg,#b98aff,#7c3aed)',
+  'linear-gradient(180deg,#ffd98a,#d99b2f)',
+  'linear-gradient(180deg,#7dffc4,#27b578)',
+  'linear-gradient(180deg,#7ec8ff,#2b7fd4)'
+];
+
+function renderVersions(data) {
+  if (!data) return;
+  const total = data.total || {}, online = data.online || {};
+  // tri décroissant : la version la plus répandue en tête, comme les plateformes
+  const rows = Object.entries(total).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  const sum = rows.reduce((s, [, n]) => s + n, 0) || 1;
+
+  const latestEl = $('verLatest');
+  if (latestEl) latestEl.textContent = data.latest || '—';
+
+  const bar = $('versionBar'), listEl = $('versionList');
+  if (bar) bar.innerHTML = rows.map(([v, n], i) =>
+    `<div style="width:${Math.round(n / sum * 1000) / 10}%;background:${VERSION_COLORS[i % VERSION_COLORS.length]};box-shadow:inset 0 0 12px rgba(255,255,255,.15);transition:width 1.2s cubic-bezier(.22,1,.36,1)" title="${esc(v)}"></div>`
+  ).join('');
+
+  if (listEl) listEl.innerHTML = rows.map(([v, n], i) => {
+    const pct = Math.round(n / sum * 1000) / 10;
+    const live = online[v] || 0;
+    return `<div style="display:flex;align-items:center;gap:9px;font-size:12px">
+      <span style="width:9px;height:9px;border-radius:3px;background:${VERSION_COLORS[i % VERSION_COLORS.length]};flex:none"></span>
+      <span style="color:#cdb8d8;flex:1">${esc(v)}${v === data.latest ? ' <span style="color:#7dffc4;font-size:10px">· latest</span>' : ''}</span>
+      ${live ? `<span style="font-size:10px;color:#7dffc4">${live} live</span>` : ''}
+      <span style="font-variant-numeric:tabular-nums;color:#f6ecf7;font-weight:600">${fmtN(n)}</span>
+      <span style="font-variant-numeric:tabular-nums;color:#9d84ad;width:42px;text-align:right">${pct}%</span>
+    </div>`;
+  }).join('') || '<span style="color:#6f5a80;font-size:12px">no data yet</span>';
+
+  /* Les retardataires : c'est la liste à pinger vers itch quand une MAJ sort.
+     Le pseudo Discord n'est là que pour ceux qui ont lié leur compte ; sinon on
+     retombe sur l'UUID tronqué, qui ne sert qu'à distinguer les lignes. */
+  const lag = data.laggards || [];
+  const cnt = $('lagCount'), lagEl = $('lagList');
+  if (cnt) cnt.textContent = fmtN(lag.length);
+  if (lagEl) lagEl.innerHTML = lag.map(p => {
+    const who = p.discord_username
+      ? `<span style="color:#d6c2f5">${esc(p.discord_username)}</span>`
+      : `<span class="mono" style="color:#6f5a80">${esc(String(p.player_id).slice(0, 8))}</span>`;
+    return `<div style="display:flex;align-items:center;gap:8px;font-size:11.5px">
+      ${who}
+      <span style="flex:1"></span>
+      <span class="lang-pill" style="padding:2px 8px;font-size:10px">${esc(p.version)}</span>
+      <span style="color:#6f5a80;font-size:10px;width:58px;text-align:right">${agoShort(p.last_seen)}</span>
+    </div>`;
+  }).join('') || '<span style="color:#6f5a80;font-size:12px">everyone is up to date</span>';
+}
+
 function renderSessionStats(data) {
   if (!data) return;
   const a = $('sessAvg'), m = $('sessMedian'), l = $('sessLongest'), tot = $('sessTotal');
@@ -399,6 +465,7 @@ async function fetchZoneLabels() {
   } catch (e) {}
 }
 async function fetchPlatforms() { try { renderPlatforms(await api('/v1/stats/platforms')); } catch (e) {} }
+async function fetchVersions() { try { renderVersions(await api('/v1/stats/versions')); } catch (e) {} }
 async function fetchSessionStats() { try { renderSessionStats(await api('/v1/stats/sessions')); } catch (e) {} }
 async function fetchLanguages() { try { renderLanguages(await api('/v1/stats/languages')); } catch (e) {} }
 async function fetchToday() {
@@ -481,6 +548,443 @@ async function deleteAnnouncement() {
 }
 
 // ===================================================================
+//  GAMEPLAY — death map, enemy ranking, endings
+// ===================================================================
+let _mapIndex = null;          // maps/index.json, chargé une fois
+let _deathData = null;         // dernière réponse de /v1/stats/deaths
+let _deathMapId = null;        // carte affichée
+
+const ENDING_LABELS = { chad: 'Chad Ending', gameover_jeu1: 'Game Over — Trial 1', gameover_jeu2: 'Game Over — Trial 2' };
+// gameover_jeu3/4/5 arriveront tout seuls : le libellé retombe sur un formatage générique
+function endingLabel(k) {
+  if (ENDING_LABELS[k]) return ENDING_LABELS[k];
+  const m = /^gameover_jeu(\d+)$/.exec(k);
+  return m ? `Game Over — Trial ${m[1]}` : k;
+}
+const ENDING_COLORS = {
+  chad: 'linear-gradient(180deg,#7dffc4,#27b578)',
+  gameover_jeu1: 'linear-gradient(180deg,#ff5e97,#d92665)',
+  gameover_jeu2: 'linear-gradient(180deg,#b98aff,#7c3aed)'
+};
+
+async function loadMapIndex() {
+  if (_mapIndex !== null) return _mapIndex;
+  try {
+    const res = await fetch('maps/index.json');
+    _mapIndex = res.ok ? await res.json() : { tileSize: 48, maps: {} };
+  } catch (e) { _mapIndex = { tileSize: 48, maps: {} }; }
+  return _mapIndex;
+}
+
+function renderDeaths(data) {
+  if (!data) return;
+  _deathData = data;
+
+  const totalEl = $('deathTotal');
+  if (totalEl) totalEl.textContent = fmtN(data.total || 0);
+  const fatalEl = $('deathFatal');
+  if (fatalEl) fatalEl.textContent = fmtN(data.fatalTotal || 0);
+
+  // classement des ennemis — le « counter de mort »
+  const enemies = data.byEnemy || [];
+  const enemyMax = enemies.length ? enemies[0].count : 1;
+  const enemyEl = $('enemyList');
+  if (enemyEl) enemyEl.innerHTML = enemies.slice(0, 12).map((r, i) => `
+    <div class="drop-row">
+      <span class="drop-i">${i + 1}</span>
+      <span class="drop-name">${esc(r.enemy)}</span>
+      <span class="drop-exits">${fmtN(r.count)}</span>
+      <span class="drop-pct">${Math.round(r.count / enemyMax * 100)}%</span>
+    </div>`).join('') || '<div style="color:#6f5a80;font-size:12px;padding:8px 2px">no data yet</div>';
+
+  /* Classement de l'ennemi précis. L'identifiant affiché est « map#event » :
+     l'id d'événement n'est unique qu'au sein d'une carte, donc seul le couple
+     désigne un ennemi sans ambiguïté. Le nom qui le précède n'est qu'une
+     étiquette lisible, il peut être renommé sans que l'id ne bouge. */
+  const insts = data.byInstance || [];
+  const instMax = insts.length ? insts[0].count : 1;
+  const instEl = $('enemyInstanceList');
+  if (instEl) instEl.innerHTML = insts.slice(0, 12).map((r, i) => `
+    <div class="drop-row">
+      <span class="drop-i">${i + 1}</span>
+      <span class="drop-name">${esc(r.name || r.family || '?')}
+        <span style="color:#6f5a80;font-size:11px">${r.map_id}#${r.enemy_event_id}</span>
+      </span>
+      <span class="drop-exits">${fmtN(r.count)}</span>
+      <span class="drop-pct">${Math.round(r.count / instMax * 100)}%</span>
+    </div>`).join('') || '<div style="color:#6f5a80;font-size:12px;padding:8px 2px">no data yet</div>';
+
+  // classement des cartes
+  const byMap = data.byMap || [];
+  const mapMax = byMap.length ? byMap[0].count : 1;
+  const rankEl = $('deathMapRank');
+  if (rankEl) rankEl.innerHTML = byMap.slice(0, 8).map((r, i) => `
+    <div class="drop-row">
+      <span class="drop-i">${i + 1}</span>
+      <span class="drop-name">${esc(mapLabel(r.map_id))}</span>
+      <span class="drop-exits">${fmtN(r.count)}</span>
+      <span class="drop-pct">${Math.round(r.count / mapMax * 100)}%</span>
+    </div>`).join('') || '<div style="color:#6f5a80;font-size:12px;padding:8px 2px">no data yet</div>';
+
+  /* Le sélecteur liste TOUTES les cartes rendues, pas seulement celles où
+     quelqu'un s'est fait prendre : sinon, sur une base fraîche, il ne contient
+     qu'une entrée et on ne peut plus explorer le reste du jeu. Les cartes sans
+     capture restent affichées à 0. Tri par captures décroissantes, puis par id
+     pour que l'ordre soit stable quand tout est à égalité. */
+  const sel = $('deathMapSelect');
+  if (sel) {
+    const counts = {};
+    for (const r of byMap) counts[r.map_id] = r.count;
+    const ids = Object.keys((_mapIndex && _mapIndex.maps) || {}).map(Number);
+    for (const r of byMap) if (!ids.includes(r.map_id)) ids.push(r.map_id);
+    ids.sort((a, b) => (counts[b] || 0) - (counts[a] || 0) || a - b);
+
+    const opts = ids.map(id =>
+      `<option value="${id}">${esc(mapLabel(id))} · ${fmtN(counts[id] || 0)}</option>`).join('');
+    if (sel.innerHTML !== opts) sel.innerHTML = opts;
+    if (!ids.includes(_deathMapId)) _deathMapId = ids.length ? ids[0] : null;
+    if (_deathMapId != null) sel.value = String(_deathMapId);
+  }
+  drawDeathMap();
+}
+
+function drawDeathMap() {
+  const wrap = $('deathMapWrap'), empty = $('deathMapEmpty');
+  const img = $('deathMapImg'), svg = $('deathMapSvg'), cnt = $('deathMapCount');
+  if (!wrap || !svg || !img) return;
+
+  const info = _mapIndex && _mapIndex.maps ? _mapIndex.maps[String(_deathMapId)] : null;
+  const points = ((_deathData && _deathData.points) || []).filter(p => p.map_id === _deathMapId);
+
+  if (_deathMapId == null || !info) {
+    wrap.classList.add('hidden');
+    if (empty) {
+      empty.classList.remove('hidden');
+      /* Une carte sans PNG n'est pas un bug : le rendu ne couvre que les cartes
+         où un événement retire des PV. Si une capture tombe ailleurs, on le dit. */
+      empty.textContent = _deathMapId == null
+        ? 'no captures recorded yet'
+        : 'no background rendered for ' + mapLabel(_deathMapId) + ' — re-run tools/render-maps.js';
+    }
+    if (cnt) cnt.textContent = '0';
+    return;
+  }
+  wrap.classList.remove('hidden');
+  if (empty) empty.classList.add('hidden');
+  if (cnt) cnt.textContent = fmtN(points.reduce((s, p) => s + p.count, 0));
+
+  const src = 'maps/' + info.file;
+  if (img.getAttribute('src') !== src) img.setAttribute('src', src);
+
+  /* Le viewBox est en cases, pas en pixels : les croix se placent en coordonnées
+     de jeu et suivent automatiquement l'échelle de l'image, quelle que soit la
+     largeur du panneau. */
+  const max = points.reduce((m, p) => Math.max(m, p.count), 1);
+  const marks = points.map(p => {
+    // racine carrée : l'aire de la croix suit le nombre de morts, pas sa longueur
+    const t = Math.sqrt(p.count / max);
+    const r = 0.22 + t * 0.30;                       // demi-diagonale, en cases
+    const op = (0.45 + t * 0.55).toFixed(2);
+    const cx = p.x + 0.5, cy = p.y + 0.5;
+    const title = `${p.count} death${p.count > 1 ? 's' : ''}${p.enemy ? ' · ' + p.enemy : ''} (${p.x},${p.y})`;
+    return `<g opacity="${op}"><title>${esc(title)}</title>` +
+      `<path d="M${(cx-r).toFixed(2)} ${(cy-r).toFixed(2)} L${(cx+r).toFixed(2)} ${(cy+r).toFixed(2)} ` +
+      `M${(cx+r).toFixed(2)} ${(cy-r).toFixed(2)} L${(cx-r).toFixed(2)} ${(cy+r).toFixed(2)}" ` +
+      `stroke="#ff2d55" stroke-width="${(0.10 + t * 0.10).toFixed(3)}" stroke-linecap="round" ` +
+      `style="filter:drop-shadow(0 0 ${(r * 0.5).toFixed(2)}px rgba(255,45,85,.9))"/></g>`;
+  }).join('');
+
+  svg.setAttribute('viewBox', `0 0 ${info.width} ${info.height}`);
+  svg.innerHTML = marks;
+}
+
+function renderEndings(data) {
+  if (!data) return;
+  const endings = data.endings || {};
+  const reached = data.reached || 0;
+  const rows = Object.entries(endings).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  const sum = rows.reduce((s, [, n]) => s + n, 0) || 1;
+
+  const reachedEl = $('endReached');
+  if (reachedEl) reachedEl.textContent = fmtN(reached);
+
+  /* « 50% fin Chad » : sur les joueurs qui ont atteint UNE fin. Rapporter au
+     total des joueurs mélangerait ceux qui n'ont simplement pas fini. */
+  const chadEl = $('chadPct');
+  if (chadEl) chadEl.textContent = reached ? Math.round((endings.chad || 0) / reached * 100) + '%' : '—';
+
+  const color = (k, i) => ENDING_COLORS[k] || VERSION_COLORS[i % VERSION_COLORS.length];
+  const bar = $('endingBar'), listEl = $('endingList');
+  if (bar) bar.innerHTML = rows.map(([k, n], i) =>
+    `<div style="width:${Math.round(n / sum * 1000) / 10}%;background:${color(k, i)};box-shadow:inset 0 0 12px rgba(255,255,255,.15)" title="${esc(endingLabel(k))}"></div>`).join('');
+  if (listEl) listEl.innerHTML = rows.map(([k, n], i) => `
+    <div style="display:flex;align-items:center;gap:9px;font-size:12px">
+      <span style="width:9px;height:9px;border-radius:3px;background:${color(k, i)};flex:none"></span>
+      <span style="color:#cdb8d8;flex:1">${esc(endingLabel(k))}</span>
+      <span style="font-variant-numeric:tabular-nums;color:#f6ecf7;font-weight:600">${fmtN(n)}</span>
+      <span style="font-variant-numeric:tabular-nums;color:#9d84ad;width:52px;text-align:right">${reached ? Math.round(n / reached * 100) : 0}%</span>
+    </div>`).join('') || '<span style="color:#6f5a80;font-size:12px">no ending reached yet</span>';
+
+  const favs = Object.entries(data.favourites || {}).sort((a, b) => b[1] - a[1]);
+  const favTotal = favs.reduce((s, [, n]) => s + n, 0) || 1;
+  const favEl = $('favouriteList');
+  if (favEl) favEl.innerHTML = favs.map(([name, n]) =>
+    `<span class="lang-pill">${esc(name)} <span>${Math.round(n / favTotal * 100)}%</span></span>`).join('')
+    || '<span style="color:#6f5a80;font-size:12px">nobody answered yet</span>';
+
+  const ad = data.afterDeath || {};
+  const set = (id, v) => { const el = $(id); if (el) el.textContent = v ? fmtN(v) : '—'; };
+  set('adRetry', ad.retry); set('adLoad', ad.load); set('adTitle', ad.title);
+}
+
+async function refreshGameplay() {
+  await loadMapIndex();
+  try { renderDeaths(await api('/v1/stats/deaths')); } catch (e) {}
+  try { renderEndings(await api('/v1/stats/endings')); } catch (e) {}
+}
+
+// ===================================================================
+//  SURVEYS
+// ===================================================================
+const SV_LANGS = ['en', 'fr', 'ru', 'ja', 'ko', 'zh'];
+
+/* Le brouillon vit ici et pas dans le DOM : avec 6 langues, les champs affichés
+   ne montrent qu'une tranche de la question à la fois. Basculer de langue écrit
+   la tranche courante puis relit la nouvelle. */
+let svDraft = null;
+let svLang = 'en';
+let svPool = [];
+
+function svBlank() {
+  return { id: '', type: 'choice', label: {}, lowLabel: {}, highLabel: {}, options: [] };
+}
+
+// Lit les champs visibles vers le brouillon, pour la langue affichée.
+function svCapture() {
+  if (!svDraft) return;
+  svDraft.id = $('svSlug').value.trim().toLowerCase();
+  svDraft.type = $('svType').value;
+  svDraft.label[svLang] = $('svLabel').value.trim();
+  svDraft.lowLabel[svLang] = $('svLow').value.trim();
+  svDraft.highLabel[svLang] = $('svHigh').value.trim();
+  $('svOptionList').querySelectorAll('[data-oi]').forEach(row => {
+    const i = parseInt(row.dataset.oi, 10);
+    if (!svDraft.options[i]) return;
+    svDraft.options[i].id = row.querySelector('.slug').value.trim().toLowerCase();
+    svDraft.options[i].label[svLang] = row.querySelector('.lab').value.trim();
+  });
+}
+
+function svRenderEditor() {
+  if (!svDraft) svDraft = svBlank();
+  $('svSlug').value = svDraft.id || '';
+  $('svType').value = svDraft.type;
+  $('svLabel').value = svDraft.label[svLang] || '';
+  $('svLow').value = (svDraft.lowLabel || {})[svLang] || '';
+  $('svHigh').value = (svDraft.highLabel || {})[svLang] || '';
+
+  const isScale = svDraft.type === 'scale';
+  $('svScaleBox').classList.toggle('hidden', !isScale);
+  $('svOptionsBox').classList.toggle('hidden', isScale);
+
+  // pastilles : plein = cette langue est traduite, creux = trou à combler
+  $('svLangTabs').innerHTML = SV_LANGS.map(l => {
+    const filled = !!(svDraft.label[l] || '').trim();
+    return `<button class="sv-lang${filled ? ' filled' : ''}${l === svLang ? ' active' : ''}" data-lang="${l}">${l.toUpperCase()}</button>`;
+  }).join('');
+  $('svLangTabs').querySelectorAll('[data-lang]').forEach(b => {
+    b.addEventListener('click', () => { svCapture(); svLang = b.dataset.lang; svRenderEditor(); });
+  });
+
+  $('svOptionList').innerHTML = svDraft.options.map((o, i) => `
+    <div class="sv-opt" data-oi="${i}">
+      <input class="slug" value="${esc(o.id || '')}" placeholder="slug" spellcheck="false">
+      <input class="lab" value="${esc((o.label || {})[svLang] || '')}" placeholder="option label">
+      <button class="rm" data-ro="${i}">&times;</button>
+    </div>`).join('');
+  $('svOptionList').querySelectorAll('[data-ro]').forEach(b => {
+    b.addEventListener('click', () => {
+      svCapture();
+      svDraft.options.splice(parseInt(b.dataset.ro, 10), 1);
+      svRenderEditor();
+    });
+  });
+
+  $('svEditorMode').textContent = svDraft.id && svPool.some(q => q.id === svDraft.id)
+    ? 'editing "' + svDraft.id + '" — saving keeps existing answers'
+    : 'new question';
+}
+
+function svShowError(msg) {
+  const el = $('svError');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.classList.toggle('hidden', !msg);
+}
+
+async function svSave() {
+  svCapture();
+  svShowError('');
+  const d = svDraft;
+  if (!d.id) return svShowError('A slug is required.');
+  if (!(d.label.en || '').trim()) return svShowError('The English question is required — it is the fallback for every other language.');
+
+  const body = { id: d.id, type: d.type, label: svClean(d.label) };
+  if (d.type === 'scale') {
+    body.lowLabel = svClean(d.lowLabel);
+    body.highLabel = svClean(d.highLabel);
+  } else {
+    const opts = d.options.filter(o => o.id && (o.label.en || '').trim());
+    if (opts.length < 2) return svShowError('At least 2 options with a slug and an English label.');
+    body.options = opts.map(o => ({ id: o.id, label: svClean(o.label) }));
+  }
+
+  try {
+    const res = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/survey/question', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.token },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return svShowError(data.error || ('HTTP ' + res.status));
+    svDraft = svBlank(); svLang = 'en'; svRenderEditor();
+    const t = $('svToast');
+    if (t) { t.classList.remove('hidden'); setTimeout(() => t.classList.add('hidden'), 2600); }
+    refreshSurveys();
+  } catch (e) { svShowError('Unable to reach the server.'); }
+}
+
+// Retire les langues vides : le jeu retombe sur l'anglais tout seul.
+function svClean(dict) {
+  const out = {};
+  for (const l of SV_LANGS) if ((dict[l] || '').trim()) out[l] = dict[l].trim();
+  return out;
+}
+
+function svFillFromEn() {
+  svCapture();
+  const fill = (d) => { for (const l of SV_LANGS) if (!(d[l] || '').trim() && d.en) d[l] = d.en; };
+  fill(svDraft.label); fill(svDraft.lowLabel); fill(svDraft.highLabel);
+  svDraft.options.forEach(o => fill(o.label));
+  svRenderEditor();
+}
+
+function renderSurveyPool(questions) {
+  svPool = questions || [];
+  const cnt = $('svPoolCount');
+  if (cnt) cnt.textContent = svPool.length;
+  const el = $('svPoolList');
+  if (!el) return;
+  el.innerHTML = svPool.map(q => {
+    const missing = SV_LANGS.filter(l => !(q.label || {})[l]);
+    return `
+    <div class="sv-q${q.active ? '' : ' off'}">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:10px;letter-spacing:1.2px;color:#e9b95f;text-transform:uppercase">${esc(q.type)}</span>
+        <span style="font-family:ui-monospace,monospace;font-size:11px;color:#6f5a80">${esc(q.id)}</span>
+        <div style="flex:1"></div>
+        <span style="font-size:11px;color:#9d84ad">${fmtN(q.responses || 0)} answers</span>
+        <button class="btn-ghost" data-sv-edit="${esc(q.id)}" style="padding:4px 10px;font-size:11px">EDIT</button>
+        <button class="btn-ghost" data-sv-toggle="${esc(q.id)}" style="padding:4px 10px;font-size:11px">${q.active ? 'DISABLE' : 'ENABLE'}</button>
+        <button class="rm" data-sv-del="${esc(q.id)}" style="width:26px;height:26px;border-radius:7px;border:1px solid rgba(255,71,87,.35);background:rgba(255,71,87,.10);color:#ff8a97;cursor:pointer">&times;</button>
+      </div>
+      <div style="font-size:13px;color:#e9d5f0;margin-top:8px">${esc((q.label || {}).en || '—')}</div>
+      ${missing.length ? `<div style="font-size:10.5px;color:#6f5a80;margin-top:6px">missing: ${missing.join(', ').toUpperCase()} · these players will see English</div>` : ''}
+    </div>`;
+  }).join('') || '<div style="color:#6f5a80;font-size:12px">no question yet — write one on the left</div>';
+
+  el.querySelectorAll('[data-sv-edit]').forEach(b => b.addEventListener('click', () => {
+    const q = svPool.find(x => x.id === b.dataset.svEdit);
+    if (!q) return;
+    svDraft = {
+      id: q.id, type: q.type,
+      label: Object.assign({}, q.label), lowLabel: Object.assign({}, q.lowLabel || {}),
+      highLabel: Object.assign({}, q.highLabel || {}),
+      options: (q.options || []).map(o => ({ id: o.id, label: Object.assign({}, o.label) }))
+    };
+    svLang = 'en'; svRenderEditor();
+    $('svSlug').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }));
+  el.querySelectorAll('[data-sv-toggle]').forEach(b => b.addEventListener('click', () => {
+    const q = svPool.find(x => x.id === b.dataset.svToggle);
+    if (q) svPostQuestion(Object.assign({}, q, { active: !q.active }));
+  }));
+  el.querySelectorAll('[data-sv-del]').forEach(b => b.addEventListener('click', () => svDeleteQuestion(b.dataset.svDel)));
+}
+
+async function svPostQuestion(q) {
+  try {
+    await fetch(cfg.url.replace(/\/+$/, '') + '/v1/survey/question', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.token },
+      body: JSON.stringify(q)
+    });
+    refreshSurveys();
+  } catch (e) {}
+}
+
+async function svDeleteQuestion(id) {
+  // La suppression emporte les réponses : c'est irréversible, d'où le rappel.
+  if (!confirm('Delete "' + id + '" and all its collected answers?')) return;
+  try {
+    await fetch(cfg.url.replace(/\/+$/, '') + '/v1/survey/question/' + encodeURIComponent(id), {
+      method: 'DELETE', headers: { 'Authorization': 'Bearer ' + cfg.token }
+    });
+    refreshSurveys();
+  } catch (e) {}
+}
+
+function renderSurveyResults(data) {
+  const el = $('svResults');
+  if (!el) return;
+  const qs = (data && data.questions) || [];
+  const withAnswers = qs.filter(q => q.respondents > 0);
+  if (!withAnswers.length) {
+    el.innerHTML = '<div style="color:#6f5a80;font-size:12px">no answer collected yet</div>';
+    return;
+  }
+  el.innerHTML = withAnswers.map(q => {
+    const labelOf = (key) => {
+      if (q.type === 'scale') return key + ' / 5';
+      const o = (q.options || []).find(x => x.id === key);
+      return o ? ((o.label || {}).en || o.id) : key;
+    };
+    /* Pour l'échelle on force l'ordre 1→5 : trier par popularité rendrait la
+       distribution illisible. Pour le reste, le plus choisi en premier. */
+    let keys = q.type === 'scale' ? ['1', '2', '3', '4', '5']
+      : Object.keys(q.counts).sort((a, b) => q.counts[b] - q.counts[a]);
+    const max = Math.max(1, ...keys.map(k => q.counts[k] || 0));
+
+    return `
+    <div>
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <span style="font-size:13.5px;color:#f6ecf7;font-weight:600">${esc((q.label || {}).en || q.id)}</span>
+        <span style="font-family:ui-monospace,monospace;font-size:10.5px;color:#6f5a80">${esc(q.id)}</span>
+        <div style="flex:1"></div>
+        ${q.average != null ? `<span style="font-size:12px;color:#7dffc4">avg ${q.average} / 5</span>` : ''}
+        <span style="font-size:11px;color:#9d84ad">${fmtN(q.respondents)} respondents</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;margin-top:12px">
+        ${keys.map(k => {
+          const n = q.counts[k] || 0;
+          return `<div style="display:flex;align-items:center;gap:10px;font-size:12px">
+            <span style="width:34%;color:#cdb8d8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(labelOf(k))}</span>
+            <span class="sv-bar" style="flex:1"><i style="width:${Math.round(n / max * 100)}%"></i></span>
+            <span style="width:42px;text-align:right;font-variant-numeric:tabular-nums;color:#f6ecf7">${fmtN(n)}</span>
+            <span style="width:46px;text-align:right;font-variant-numeric:tabular-nums;color:#9d84ad">${Math.round(n / q.respondents * 100)}%</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function refreshSurveys() {
+  try { renderSurveyPool((await api('/v1/survey/admin')).questions); } catch (e) {}
+  try { renderSurveyResults(await api('/v1/stats/survey')); } catch (e) {}
+}
+
+// ===================================================================
 //  REPORTS
 // ===================================================================
 let _reportsCache = [];
@@ -516,6 +1020,7 @@ function renderReports(reports) {
       <span><span class="plat-tag">${plat}</span></span>
       <span style="color:#ffd98a" class="rep-ell">${pid}</span>
       <span style="text-align:right">${shot}</span>
+      <span><button class="rm" data-del="${esc(r.id)}" title="Delete this report">×</button></span>
     </div>`;
   }).join('');
   table.querySelectorAll('[data-shot]').forEach(el => {
@@ -524,6 +1029,27 @@ function renderReports(reports) {
       if (rep && rep.screenshot) showScreenshot(rep.screenshot);
     });
   });
+  table.querySelectorAll('[data-del]').forEach(el => {
+    el.addEventListener('click', () => deleteReport(el.dataset.del));
+  });
+}
+
+/* Suppression d'une seule ligne. Le motif « armed » à double-clic de CLEAR ALL
+   est trop lourd ici : un confirm() suffit, comme pour les annonces.
+   api() est GET-only, d'où le fetch écrit à la main. */
+async function deleteReport(id) {
+  if (!confirm('Delete this report?')) return;
+  try {
+    const res = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/reports/' + encodeURIComponent(id), {
+      method: 'DELETE', headers: { 'Authorization': 'Bearer ' + cfg.token }
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const left = _reportsCache.filter(r => String(r.id) !== String(id));
+    lastReportCount = left.length;                     // sinon le badge rejoue « nouveau rapport »
+    renderReports(left);
+    const badge = $('navReports');
+    if (badge && left.length === 0) badge.classList.add('hidden');
+  } catch (e) { alert('Unable to delete this report.'); }
 }
 async function fetchReports() {
   try {
@@ -708,6 +1234,8 @@ function saveSettings() {
 // ===================================================================
 const TAB_META = {
   live: ['Live', 'real-time player activity'],
+  gameplay: ['Gameplay', 'where players die, what kills them, how they finish'],
+  surveys: ['Surveys', 'ask players one question at a time — anonymously'],
   announce: ['Announcements', 'broadcast a message to all online players'],
   reports: ['Error Reports', 'bugs and stack traces from the game'],
   update: ['Game Update', 'deploy a new version to all players'],
@@ -722,6 +1250,8 @@ function switchTab(tab) {
   $('tabTitle').textContent = TAB_META[tab][0];
   $('tabSubtitle').textContent = TAB_META[tab][1];
   if (changed) { const veil = $('veil'); if (veil) { veil.classList.remove('on'); void veil.offsetWidth; veil.classList.add('on'); setTimeout(() => veil.classList.remove('on'), 760); } }
+  if (tab === 'gameplay') refreshGameplay();
+  if (tab === 'surveys') { svRenderEditor(); refreshSurveys(); }
   if (tab === 'announce') { fetchAnnouncement(); populateAnnounceForm(); }
   if (tab === 'reports') { fetchReports(); const b = $('navReports'); if (b) b.classList.add('hidden'); }
   if (tab === 'update') fetchCurrentUpdate();
@@ -929,7 +1459,7 @@ function connect() {
     setLink(true);
     refreshDropoff(); refreshConcurrent(); refreshNewPlayers();
     checkVersion(); fetchAnnouncement(); fetchToday(); checkReportsBadge();
-    fetchZoneLabels(); fetchPlatforms(); fetchSessionStats(); fetchLanguages();
+    fetchZoneLabels(); fetchPlatforms(); fetchVersions(); fetchSessionStats(); fetchLanguages();
     pingLatency();
   };
   ws.onmessage = (ev) => {
@@ -940,6 +1470,11 @@ function connect() {
         if (currentTab === 'reports') fetchReports();
         else { const b = $('navReports'); if (b) { b.classList.remove('hidden'); } checkReportsBadge(); }
       }
+      /* Une capture vient de tomber. On ne rafraîchit que si l'onglet est
+         ouvert : sinon il se rechargera de toute façon à l'affichage, et
+         recharger en arrière-plan ne ferait que consommer des requêtes.
+         Le serveur groupe déjà les rafales, inutile de temporiser ici. */
+      if (msg.type === 'capture' && currentTab === 'gameplay') refreshGameplay();
     } catch (e) {}
   };
   ws.onclose = () => { setLink(false); if (reconnectTimer) clearTimeout(reconnectTimer); reconnectTimer = setTimeout(connect, 3000); };
@@ -968,6 +1503,19 @@ $('npPills').querySelectorAll('.pill').forEach(b => b.addEventListener('click', 
   b.classList.add('active-np'); npRange = parseInt(b.dataset.r, 10); refreshNewPlayers();
 }));
 $('zoneEditBtn').addEventListener('click', () => { if (zoneEditMode) closeZoneEditorAndSave(); else openZoneEditor(); });
+$('svType').addEventListener('change', () => { svCapture(); svRenderEditor(); });
+$('svAddOption').addEventListener('click', () => {
+  svCapture();
+  svDraft.options.push({ id: '', label: {} });
+  svRenderEditor();
+});
+$('svSave').addEventListener('click', svSave);
+$('svFillEn').addEventListener('click', svFillFromEn);
+$('svReset').addEventListener('click', () => { svDraft = svBlank(); svLang = 'en'; svShowError(''); svRenderEditor(); });
+$('deathMapSelect').addEventListener('change', (e) => {
+  _deathMapId = parseInt(e.target.value, 10);
+  drawDeathMap();                                    // redessin local, pas de requête
+});
 $('annPublish').addEventListener('click', publishAnnouncement);
 $('annDelete').addEventListener('click', deleteAnnouncement);
 $('reportsExport').addEventListener('click', exportReportsCSV);
@@ -998,9 +1546,16 @@ document.addEventListener('keydown', (e) => {
 // ===================================================================
 setInterval(pollLive, 3000);
 setInterval(refreshDropoff, 60 * 1000);
+// Des totaux cumulatifs bougent lentement : inutile de les recharger quand
+// l'onglet n'est même pas affiché.
+setInterval(() => { if (currentTab === 'gameplay') refreshGameplay(); }, 60 * 1000);
+// Idem pour les sondages : rafraîchir l'onglet caché n'apporte rien, et ça
+// écraserait le brouillon en cours d'écriture.
+setInterval(() => { if (currentTab === 'surveys') refreshSurveys(); }, 60 * 1000);
 setInterval(refreshConcurrent, 5 * 60 * 1000);
 setInterval(refreshNewPlayers, 5 * 60 * 1000);
 setInterval(fetchPlatforms, 5 * 1000);
+setInterval(fetchVersions, 5 * 1000);
 setInterval(fetchSessionStats, 5 * 1000);
 setInterval(fetchZoneLabels, 5 * 1000);
 setInterval(fetchLanguages, 5 * 1000);

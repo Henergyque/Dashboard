@@ -5,7 +5,9 @@
   const mod = await import('nw-builder');
   const nwbuild = mod.default || mod.nwbuild || mod;
   await nwbuild({
-    srcDir: './{app.js,index.html,dashboard.css,package.json,vendor/**,icon.png,succubus.png}',
+    // maps/ : fonds de carte de l'onglet GAMEPLAY, produits par tools/render-maps.js.
+    // L'oublier ici est silencieux — l'app se lance et les cartes sont juste vides.
+    srcDir: './{app.js,index.html,dashboard.css,package.json,vendor/**,maps/**,icon.png,succubus.png}',
     mode: 'build',
     version: '0.82.0',
     flavor: 'normal',

@@ -47,6 +47,16 @@
         <svg width="17" height="17" viewBox="0 0 17 17" style="flex:none"><path d="M2.5 6.5 L11 3 V14 L2.5 10.5 Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path><path d="M12.5 6 Q14.5 8.5 12.5 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg>
         <span class="nav-label">Announcement</span>
       </div>
+      <div class="nav-item" data-tab="gameplay">
+        <span class="marker"></span>
+        <svg width="17" height="17" viewBox="0 0 17 17" style="flex:none"><path d="M4 4 L13 13 M13 4 L4 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path><circle cx="8.5" cy="8.5" r="7" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.4"></circle></svg>
+        <span class="nav-label">Gameplay</span>
+      </div>
+      <div class="nav-item" data-tab="surveys">
+        <span class="marker"></span>
+        <svg width="17" height="17" viewBox="0 0 17 17" style="flex:none"><rect x="2.5" y="2.5" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.3" opacity="0.5"></rect><path d="M5.2 8.4 L7.2 10.4 L11.6 5.9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <span class="nav-label">Surveys</span>
+      </div>
       <div class="nav-item" data-tab="reports">
         <span class="marker"></span>
         <svg width="17" height="17" viewBox="0 0 17 17" style="flex:none"><rect x="2.5" y="8" width="2.8" height="6" rx="1" fill="currentColor" opacity="0.75"></rect><rect x="7.1" y="4.5" width="2.8" height="9.5" rx="1" fill="currentColor"></rect><rect x="11.7" y="6.5" width="2.8" height="7.5" rx="1" fill="currentColor" opacity="0.55"></rect></svg>
@@ -163,8 +173,19 @@
             <div style="display:flex;flex-direction:column;margin-top:10px" id="dropMaps"></div>
           </div>
 
+          <!-- versions -->
+          <div class="col4 glass" style="padding:22px 24px;display:flex;flex-direction:column">
+            <div class="sect-title">VERSIONS</div>
+            <div class="sect-sub">players per game version · latest is <span id="verLatest">—</span></div>
+            <div style="display:flex;height:12px;border-radius:8px;overflow:hidden;margin-top:14px;border:1px solid rgba(255,255,255,.08)" id="versionBar"></div>
+            <div style="display:flex;flex-direction:column;gap:9px;margin-top:14px" id="versionList"></div>
+            <div class="divider" style="margin:16px 0 14px"></div>
+            <div class="mini-label">STILL ON AN OLD VERSION · <span id="lagCount">0</span></div>
+            <div style="display:flex;flex-direction:column;gap:7px;margin-top:12px;max-height:190px;overflow-y:auto" id="lagList"></div>
+          </div>
+
           <!-- new players chart -->
-          <div class="col12 glass" style="padding:22px 24px 14px">
+          <div class="col8 glass" style="padding:22px 24px 14px">
             <div style="display:flex;align-items:center;gap:14px;margin-bottom:8px">
               <div>
                 <div class="sect-title">NEW PLAYERS PER DAY</div>
@@ -229,6 +250,156 @@
         </div>
       </section>
 
+      <!-- ════════ GAMEPLAY ════════ -->
+      <section class="tab-panel" id="tab-gameplay">
+        <div class="grid12">
+
+          <!-- death map -->
+          <div class="col8 glass" style="padding:22px 24px">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
+              <div>
+                <div class="sect-title pink">CAPTURE MAP</div>
+                <div class="sect-sub"><span id="deathMapCount">0</span> captures here · <span id="deathTotal">0</span> in total · <span id="deathFatal">0</span> fatal</div>
+              </div>
+              <div style="flex:1"></div>
+              <select class="field" id="deathMapSelect" title="Map to display" aria-label="Map to display" style="width:auto;padding:8px 12px;font-size:12px"></select>
+            </div>
+            <div id="deathMapWrap" class="hidden" style="position:relative;width:100%;border-radius:12px;overflow:hidden;background:rgba(10,4,16,.6);border:1px solid rgba(255,255,255,.06)">
+              <img id="deathMapImg" alt="" style="display:block;width:100%;height:auto;image-rendering:pixelated">
+              <svg id="deathMapSvg" style="position:absolute;inset:0;width:100%;height:100%" preserveAspectRatio="none"></svg>
+            </div>
+            <div id="deathMapEmpty" style="color:#6f5a80;font-size:12px;padding:60px 0;text-align:center">no captures recorded yet</div>
+          </div>
+
+          <!-- enemy leaderboard -->
+          <div class="col4 glass" style="padding:22px 24px">
+            <div class="sect-title pink">DEADLIEST ENEMIES</div>
+            <div class="sect-sub">captures per enemy family, all time</div>
+            <div style="display:flex;flex-direction:column;margin-top:12px" id="enemyList"></div>
+            <div class="divider" style="margin:18px 0 14px"></div>
+            <div class="mini-label">BY EXACT ENEMY · map#event</div>
+            <div style="display:flex;flex-direction:column;margin-top:10px" id="enemyInstanceList"></div>
+            <div class="divider" style="margin:18px 0 14px"></div>
+            <div class="mini-label">DEADLIEST MAPS</div>
+            <div style="display:flex;flex-direction:column;margin-top:10px" id="deathMapRank"></div>
+          </div>
+
+          <!-- endings -->
+          <div class="col12 glass" style="padding:22px 24px">
+            <div style="display:flex;align-items:center;gap:14px">
+              <div>
+                <div class="sect-title">ENDINGS</div>
+                <div class="sect-sub"><span id="endReached">0</span> players have reached an ending</div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="text-align:right">
+                <div style="font-size:27px;font-weight:600;color:#7dffc4;line-height:1" id="chadPct">—</div>
+                <div style="font-size:10px;color:#9d84ad;letter-spacing:1.4px;margin-top:4px">GOT THE CHAD ENDING</div>
+              </div>
+            </div>
+            <div style="display:flex;height:12px;border-radius:8px;overflow:hidden;margin-top:16px;border:1px solid rgba(255,255,255,.08)" id="endingBar"></div>
+            <div style="display:flex;flex-direction:column;gap:9px;margin-top:14px" id="endingList"></div>
+
+            <div class="divider" style="margin:20px 0 14px"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:26px">
+              <div>
+                <div class="mini-label">FAVOURITE CHARACTER · END OF TRIAL 2</div>
+                <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:12px" id="favouriteList"></div>
+              </div>
+              <div>
+                <div class="mini-label">WHAT PLAYERS DO AFTER DYING</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px">
+                  <div><div style="font-size:21px;font-weight:600;color:#7dffc4" id="adRetry">—</div><div style="font-size:10px;color:#9d84ad;margin-top:3px;letter-spacing:1px">RETRY</div></div>
+                  <div><div style="font-size:21px;font-weight:600;color:#c9a2ff" id="adLoad">—</div><div style="font-size:10px;color:#9d84ad;margin-top:3px;letter-spacing:1px">LOAD</div></div>
+                  <div><div style="font-size:21px;font-weight:600;color:#ff8a97" id="adTitle">—</div><div style="font-size:10px;color:#9d84ad;margin-top:3px;letter-spacing:1px">GAVE UP</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ════════ SURVEYS ════════ -->
+      <section class="tab-panel" id="tab-surveys">
+        <div class="grid12">
+
+          <!-- éditeur -->
+          <div class="col5 glass" style="padding:22px 24px">
+            <div class="sect-title">QUESTION EDITOR</div>
+            <div class="sect-sub" id="svEditorMode">new question</div>
+
+            <div style="display:grid;grid-template-columns:1fr 130px;gap:12px;margin-top:18px">
+              <div>
+                <label class="field-label">SLUG <span style="color:#6f5a80;letter-spacing:.5px;font-weight:400">(stable id)</span></label>
+                <input id="svSlug" class="field" style="font-size:13px" placeholder="difficulte-jeu2" spellcheck="false">
+              </div>
+              <div>
+                <label class="field-label">TYPE</label>
+                <select id="svType" class="field" title="Question type" aria-label="Question type" style="font-size:13px">
+                  <option value="choice">Single choice</option>
+                  <option value="multi">Multi-select</option>
+                  <option value="scale">Scale 1-5</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="divider" style="margin:18px 0 14px"></div>
+
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span class="mini-label" style="margin:0">LANGUAGE</span>
+              <div id="svLangTabs" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+            </div>
+
+            <label class="field-label" style="margin-top:16px">QUESTION</label>
+            <textarea id="svLabel" class="field" rows="2" placeholder="How hard was Trial 2?"></textarea>
+
+            <div id="svScaleBox" class="hidden" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+              <div>
+                <label class="field-label">LOW LABEL</label>
+                <input id="svLow" class="field" style="font-size:13px" placeholder="Too easy">
+              </div>
+              <div>
+                <label class="field-label">HIGH LABEL</label>
+                <input id="svHigh" class="field" style="font-size:13px" placeholder="Brutal">
+              </div>
+            </div>
+
+            <div id="svOptionsBox" style="margin-top:16px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span class="mini-label" style="margin:0">OPTIONS</span>
+                <div style="flex:1"></div>
+                <button class="btn-ghost" id="svAddOption" style="padding:5px 12px;font-size:11px">+ ADD</button>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px" id="svOptionList"></div>
+            </div>
+
+            <div style="display:flex;gap:10px;margin-top:20px;align-items:center;flex-wrap:wrap">
+              <button class="btn-gold" id="svSave" style="flex:1;min-width:150px">SAVE QUESTION<span class="sheen"></span></button>
+              <button class="btn-ghost" id="svFillEn" title="Copy the English text into every empty language">FILL FROM EN</button>
+              <button class="btn-ghost" id="svReset">CLEAR</button>
+            </div>
+            <div id="svError" class="hidden" style="margin-top:12px;font-size:12px;color:#ff8a97"></div>
+            <div id="svToast" class="toast-ok hidden">✦ Question saved.</div>
+          </div>
+
+          <!-- pool -->
+          <div class="col7 glass" style="padding:22px 24px">
+            <div class="sect-title">QUESTION POOL</div>
+            <div class="sect-sub"><span id="svPoolCount">0</span> questions · players are never asked the same one twice</div>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px" id="svPoolList"></div>
+          </div>
+
+          <!-- résultats -->
+          <div class="col12 glass" style="padding:22px 24px">
+            <div class="sect-title pink">RESULTS</div>
+            <div class="sect-sub">anonymous answers · no player is identified</div>
+            <div style="display:flex;flex-direction:column;gap:26px;margin-top:18px" id="svResults"></div>
+          </div>
+
+        </div>
+      </section>
+
       <!-- ════════ REPORTS ════════ -->
       <section class="tab-panel" id="tab-reports">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
@@ -238,7 +409,7 @@
           <button class="btn-ghost btn-red" id="reportsClear">CLEAR ALL</button>
         </div>
         <div id="reportsWrap" class="glass" style="border-radius:18px;overflow:hidden">
-          <div class="rep-head"><span>TIME</span><span>ERROR</span><span>ZONE</span><span>VER</span><span>PLATFORM</span><span>PLAYER</span><span style="text-align:right">PROOF</span></div>
+          <div class="rep-head"><span>TIME</span><span>ERROR</span><span>ZONE</span><span>VER</span><span>PLATFORM</span><span>PLAYER</span><span style="text-align:right">PROOF</span><span></span></div>
           <div id="reportsTable"></div>
         </div>
         <div id="reportsEmpty" class="empty-ledger hidden">
