@@ -1202,9 +1202,77 @@ async function clearUpdate() {
 function populateSettings() {
   if ($('cfgUrl')) $('cfgUrl').value = cfg.url || '';
   if ($('cfgToken')) $('cfgToken').value = cfg.token || '';
+  refreshTrackedVersion();
   const el = $('appVersionLabel');
   if (el) el.innerHTML = 'SuccubusStats v' + esc(APP_VERSION) + ' · made by Henergyque · Kutushmurf est un enculé';
 }
+/* Le selecteur liste les versions que le serveur a reellement vues, plutot
+   qu'une liste ecrite en dur qu'il faudrait maintenir a chaque sortie. */
+async function refreshTrackedVersion() {
+  const sel = $('cfgTracked');
+  if (!sel) return;
+  try {
+    const [state, versions] = await Promise.all([
+      api('/v1/admin/tracked-version'),
+      api('/v1/stats/versions')
+    ]);
+    const current = (state && state.trackedVersion) || 'all';
+    const seen = Object.keys((versions && versions.total) || {})
+      .sort((a, b) => (b || '').localeCompare(a || '', undefined, { numeric: true }));
+
+    sel.innerHTML = '<option value="all">All versions</option>' +
+      seen.map(v => '<option value="' + esc(v) + '">' + esc(v) + '</option>').join('');
+    sel.value = current;
+    // une version suivie qui n'a plus aucune session ne serait dans aucune option
+    if (sel.value !== current) {
+      sel.insertAdjacentHTML('beforeend', '<option value="' + esc(current) + '">' + esc(current) + '</option>');
+      sel.value = current;
+    }
+    setTrackedHint(current);
+  } catch (e) {}
+}
+
+function setTrackedHint(v) {
+  const el = $('trackedHint');
+  if (!el) return;
+  el.textContent = (!v || v === 'all')
+    ? 'Showing every version at once.'
+    : 'Every panel is showing ' + v + ' only.';
+}
+
+async function saveTrackedVersion() {
+  const sel = $('cfgTracked'), btn = $('cfgTrackedSave');
+  if (!sel) return;
+  const label = btn && btn.childNodes[0];
+  const chosen = sel.value || 'all';
+  try {
+    const res = await fetch(cfg.url.replace(/\/+$/, '') + '/v1/admin/tracked-version', {
+      method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version: chosen })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    setTrackedHint(data.trackedVersion || 'all');
+    if (label) { label.textContent = '✦ APPLIED'; setTimeout(() => { label.textContent = 'APPLY'; }, 2200); }
+    /* Le filtre vit cote serveur : tout ce qui est deja affiche est perime,
+       on recharge au lieu de laisser cohabiter des chiffres de deux versions. */
+    refreshAllPanels();
+  } catch (e) {
+    if (label) { label.textContent = '✗ ' + e.message; setTimeout(() => { label.textContent = 'APPLY'; }, 2600); }
+  }
+}
+
+/* Rappelle tout ce qui depend de la version suivie. Le WebSocket poussera de
+   lui-meme le prochain instantane, mais l'attendre laisserait les compteurs
+   sur les anciennes valeurs pendant plusieurs secondes. */
+function refreshAllPanels() {
+  pollLive();
+  refreshDropoff(); refreshConcurrent(); refreshNewPlayers();
+  fetchToday(); fetchPlatforms(); fetchVersions(); fetchSessionStats(); fetchLanguages();
+  refreshGameplay(); refreshSurveys(); fetchReports();
+}
+
 async function testConnection() {
   const btn = $('cfgTest');
   const url = ($('cfgUrl').value || '').trim(), token = ($('cfgToken').value || '').trim();
@@ -1460,6 +1528,7 @@ function connect() {
     refreshDropoff(); refreshConcurrent(); refreshNewPlayers();
     checkVersion(); fetchAnnouncement(); fetchToday(); checkReportsBadge();
     fetchZoneLabels(); fetchPlatforms(); fetchVersions(); fetchSessionStats(); fetchLanguages();
+    refreshTrackedVersion();
     pingLatency();
   };
   ws.onmessage = (ev) => {
@@ -1524,6 +1593,7 @@ $('updPublish').addEventListener('click', publishUpdate);
 $('updClear').addEventListener('click', clearUpdate);
 $('cfgSave').addEventListener('click', saveSettings);
 $('cfgTest').addEventListener('click', testConnection);
+if ($('cfgTrackedSave')) $('cfgTrackedSave').addEventListener('click', saveTrackedVersion);
 $('tokenToggle').addEventListener('click', () => {
   const inp = $('cfgToken'), btn = $('tokenToggle');
   if (inp.type === 'password') { inp.type = 'text'; btn.textContent = 'HIDE'; } else { inp.type = 'password'; btn.textContent = 'REVEAL'; }

@@ -474,6 +474,23 @@
             </div>
             <div class="sb-footer-txt" id="appVersionLabel" style="margin-top:20px"></div>
           </div>
+
+          <div class="glass" style="padding:26px 28px;margin-top:20px">
+            <div class="sect-title">TRACKED VERSION</div>
+            <div class="sect-sub" style="margin-bottom:22px">which game version the whole dashboard reports on</div>
+            <label class="field-label">VERSION</label>
+            <select id="cfgTracked" class="field mono" style="font-size:13px;cursor:pointer">
+              <option value="all">All versions</option>
+            </select>
+            <div style="font-size:10.5px;color:#6f5a80;margin-top:8px">
+              every panel is filtered to this version &mdash; the VERSIONS card always shows everyone,
+              so you can still spot who stayed behind
+            </div>
+            <div style="display:flex;gap:12px;margin-top:26px">
+              <button class="btn-gold" id="cfgTrackedSave" style="flex:1;padding:12px;letter-spacing:2px">APPLY<span class="sheen"></span></button>
+            </div>
+            <div class="sb-footer-txt" id="trackedHint" style="margin-top:14px"></div>
+          </div>
         </div>
       </section>
 
