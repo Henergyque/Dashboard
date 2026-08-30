@@ -387,20 +387,38 @@ function renderSessionStats(data) {
 
 function renderLanguages(data) {
   const langs = (data && data.languages) || {};
-  const entries = Object.entries(langs).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  const all = Object.entries(langs).filter(([, n]) => n > 0);
+
+  /* "unknown" regroupe les sessions ouvertes avant que le serveur ne sache
+     stocker la langue choisie dans le jeu. Les afficher noyait tout le reste
+     sous une barre grise ; les compter dans le total ferait mentir les
+     pourcentages dans l'autre sens, d'ou la ligne de couverture plus bas. */
+  const entries = all.filter(([code]) => code !== 'unknown').sort((a, b) => b[1] - a[1]);
+
   const total = entries.reduce((s, [, n]) => s + n, 0) || 1;
+  const grand = all.reduce((s, [, n]) => s + n, 0);
   const max = entries.length ? entries[0][1] : 1;
   const regionEl = $('regionList'), langEl = $('langList');
+
   if (regionEl) regionEl.innerHTML = entries.slice(0, 5).map(([code, n]) => {
     const name = LANG_NAMES[code] || code.toUpperCase();
     const pct = Math.round(n / total * 100);
     const w = Math.round(n / max * 100);
     return `<div class="region-row"><span class="region-name">${esc(name)}</span><div class="region-track"><div class="region-fill" style="width:${w}%"></div></div><span class="region-pct">${pct}%</span></div>`;
-  }).join('') || '<span style="color:#6f5a80;font-size:12px">no data yet</span>';
-  if (langEl) langEl.innerHTML = entries.slice(0, 10).map(([code, n]) => {
-    const pct = Math.round(n / total * 100);
-    return `<span class="lang-pill">${esc(code.toUpperCase())} <span>${pct}%</span></span>`;
-  }).join('');
+  }).join('') || '<span style="color:#6f5a80;font-size:12px">no language reported yet</span>';
+
+  if (langEl) {
+    const pills = entries.slice(0, 10).map(([code, n]) => {
+      const pct = Math.round(n / total * 100);
+      return `<span class="lang-pill">${esc(code.toUpperCase())} <span>${pct}%</span></span>`;
+    }).join('');
+    // sans ce rappel, 3 joueurs francophones sur 5000 afficheraient "FR 100%"
+    const hidden = grand - entries.reduce((s, [, n]) => s + n, 0);
+    const note = hidden > 0
+      ? `<div style="width:100%;font-size:10px;color:#6f5a80;margin-top:6px">based on ${fmtN(grand - hidden)} of ${fmtN(grand)} players · ${fmtN(hidden)} reported none</div>`
+      : '';
+    langEl.innerHTML = pills + note;
+  }
 }
 
 function renderDropoff(d) {
