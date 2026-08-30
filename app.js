@@ -1284,11 +1284,18 @@ async function saveTrackedVersion() {
 /* Rappelle tout ce qui depend de la version suivie. Le WebSocket poussera de
    lui-meme le prochain instantane, mais l'attendre laisserait les compteurs
    sur les anciennes valeurs pendant plusieurs secondes. */
-function refreshAllPanels() {
-  pollLive();
-  refreshDropoff(); refreshConcurrent(); refreshNewPlayers();
-  fetchToday(); fetchPlatforms(); fetchVersions(); fetchSessionStats(); fetchLanguages();
-  refreshGameplay(); refreshSurveys(); fetchReports();
+async function refreshAllPanels() {
+  /* En serie et non en rafale : lancer les quinze appels d'un coup saturait le
+     limiteur, et les panneaux rejetes restaient vides sans message. */
+  const steps = [
+    () => api('/v1/live').then(d => d && d.live && renderLive(d.live)),
+    refreshDropoff, refreshConcurrent, refreshNewPlayers,
+    fetchToday, fetchPlatforms, fetchVersions, fetchSessionStats, fetchLanguages,
+    refreshGameplay, refreshSurveys, fetchReports
+  ];
+  for (const step of steps) {
+    try { await step(); } catch (e) {}
+  }
 }
 
 async function testConnection() {
@@ -1642,11 +1649,16 @@ setInterval(() => { if (currentTab === 'gameplay') refreshGameplay(); }, 60 * 10
 setInterval(() => { if (currentTab === 'surveys') refreshSurveys(); }, 60 * 1000);
 setInterval(refreshConcurrent, 5 * 60 * 1000);
 setInterval(refreshNewPlayers, 5 * 60 * 1000);
-setInterval(fetchPlatforms, 5 * 1000);
-setInterval(fetchVersions, 5 * 1000);
-setInterval(fetchSessionStats, 5 * 1000);
-setInterval(fetchZoneLabels, 5 * 1000);
-setInterval(fetchLanguages, 5 * 1000);
+/* Ces cinq-la tournaient toutes les 5 s, soit 60 requetes/minute a eux seuls,
+   au-dessus du quota admin du serveur : les panneaux rejetes echouaient en
+   silence, faute de remontee d'erreur. Aucune de ces donnees ne bouge a la
+   seconde — repartition par plateforme, par version, par langue, libelles de
+   zones, cumuls de sessions. */
+setInterval(fetchPlatforms, 30 * 1000);
+setInterval(fetchVersions, 30 * 1000);
+setInterval(fetchSessionStats, 30 * 1000);
+setInterval(fetchZoneLabels, 30 * 1000);
+setInterval(fetchLanguages, 30 * 1000);
 setInterval(fetchToday, 60 * 1000);
 setInterval(checkReportsBadge, 60 * 1000);
 setInterval(checkVersion, VERSION_CHECK_INTERVAL_MS);
