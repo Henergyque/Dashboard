@@ -17,7 +17,7 @@
     glob: true,
     app: {
       name: 'SuccubusStats',
-      version: '2.2.0',
+      version: '2.2.1',
       comments: 'Live owner dashboard for Succubus Games telemetry.'
     }
   });

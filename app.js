@@ -34,7 +34,15 @@ const MAP_NAMES = {
    apparaitrait qu'apres les premieres sessions de joueurs. A completer a chaque
    sortie, la plus recente en tete. */
 const RELEASES = ['0.5.1', '0.4.1'];
-const mapLabel = (id) => MAP_NAMES[id] ? `${MAP_NAMES[id]} (#${id})` : `Map ${id}`;
+let _trackedVersion = null;    // version suivie, lue sur le serveur (null = toutes)
+/* Noms propres a une version anterieure : la map 32 s'appelait « Bonus Arbre »
+   en 0.4.1, « Bonus Rocher » depuis la 0.5.1. Lu selon la version suivie. */
+const MAP_NAMES_BY_VERSION = { '0.4.1': { 32: 'Jeu 2-4 (Bonus Arbre)' } };
+const mapName = (id) => {
+  const o = MAP_NAMES_BY_VERSION[_trackedVersion] || {};
+  return o[id] || MAP_NAMES[id];
+};
+const mapLabel = (id) => mapName(id) ? `${mapName(id)} (#${id})` : `Map ${id}`;
 
 const LANG_NAMES = {
   en:'Anglais', fr:'Français', ru:'Russe', ko:'Coréen', ja:'Japonais', zh:'Chinois',
@@ -611,7 +619,6 @@ let _mapIndex = null;          // index.json du jeu de cartes courant
 let _mapDir = null;            // dossier de ce jeu de cartes ('maps/' ou 'maps/0.4.1/')
 let _deathData = null;         // dernière réponse de /v1/stats/deaths
 let _deathMapId = null;        // carte affichée
-let _trackedVersion = null;    // version suivie, lue sur le serveur
 
 /* Fonds de carte par version du jeu. Les coordonnées des captures sont
    relevées sur les cartes de LEUR version : plusieurs cartes ont changé de
@@ -814,7 +821,9 @@ function renderEndings(data) {
   const favs = Object.entries(data.favourites || {}).sort((a, b) => b[1] - a[1]);
   const favTotal = favs.reduce((s, [, n]) => s + n, 0) || 1;
   const favEl = $('favouriteList');
-  if (favEl) favEl.innerHTML = favs.map(([name, n]) =>
+  if (favEl && data.favouriteNotTracked) {
+    favEl.innerHTML = notTrackedNote(data.favouriteSince);
+  } else if (favEl) favEl.innerHTML = favs.map(([name, n]) =>
     `<span class="lang-pill">${esc(name)} <span>${Math.round(n / favTotal * 100)}% · ${fmtN(n)}</span></span>`).join('')
     || '<span style="color:#6f5a80;font-size:12px">nobody answered yet</span>';
 
@@ -829,9 +838,21 @@ function renderEndings(data) {
 const BONUS_COUNT = 15;
 // carte du coffre de chaque bonus en 0.5.1 (objet « Bonus N », id 20 + N)
 const BONUS_MAPS = { 1: 35, 2: 10, 3: 11, 4: 12, 5: 12, 6: 21, 7: 29, 8: 22, 9: 33, 10: 25, 11: 25, 12: 26, 13: 26, 14: 34, 15: 32 };
+/* Panneaux nés en 0.5.1 (bonus, liens, favourite) : sur une version suivie
+   antérieure il n'y a rien à mesurer, on le dit plutôt que d'afficher des 0 %. */
+function notTrackedNote(since) {
+  return `<div style="color:#6f5a80;font-size:12px;padding:8px 2px">not tracked in ${esc(_trackedVersion || 'this version')} · recorded since ${esc(since || '0.5.1')}</div>`;
+}
+
 function renderBonuses(data) {
   if (!data) return;
   const total = data.totalPlayers || 0;
+  if (data.notTracked) {
+    const set0 = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+    set0('bonusCollectors', '—'); set0('bonusPlayers', '—'); set0('bonusCollectorsPct', '—');
+    const l = $('bonusList'); if (l) l.innerHTML = notTrackedNote(data.trackedSince);
+    return;
+  }
   const by = {};
   for (const r of data.bonuses || []) by[r.bonus] = r;
   const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
@@ -852,7 +873,7 @@ function renderBonuses(data) {
       <div style="height:8px;border-radius:5px;background:rgba(255,255,255,.05);overflow:hidden">
         <div style="width:${Math.min(100, pct).toFixed(1)}%;height:100%;background:linear-gradient(90deg,#c9a2ff,#ff5e97)"></div>
       </div>
-      <span style="color:#6f5a80;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.mapId ? esc(MAP_NAMES[r.mapId] || ('Map ' + r.mapId)) : ''}</span>
+      <span style="color:#6f5a80;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.mapId ? esc(mapName(r.mapId) || ('Map ' + r.mapId)) : ''}</span>
       <span style="font-variant-numeric:tabular-nums;color:#cdb8d8;text-align:right">${fmtN(r.players)}</span>
       <span style="font-variant-numeric:tabular-nums;color:#9d84ad;text-align:right">${total ? (Math.round(pct * 10) / 10) + '%' : '—'}</span>
     </div>`);
@@ -867,7 +888,9 @@ function renderLinks(data) {
   if (!data) return;
   const total = data.totalPlayers || 0;
   const tEl = $('linkTargets');
-  if (tEl) {
+  if (tEl && data.notTracked) {
+    tEl.innerHTML = notTrackedNote(data.trackedSince);
+  } else if (tEl) {
     const by = {};
     for (const r of data.byTarget || []) by[r.target] = r;
     tEl.innerHTML = Object.keys(LINK_LABELS).map(k => {
