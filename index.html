@@ -91,6 +91,7 @@
         <div class="topbar-sub" id="tabSubtitle">real-time player activity</div>
       </div>
       <div style="flex:1"></div>
+      <button id="trackedPill" class="hidden" title="Version shown by every panel — change it in Settings" style="margin-right:22px;padding:7px 14px;border-radius:18px;font-size:10.5px;font-weight:700;letter-spacing:1.6px;background:rgba(160,107,255,.12);border:1px solid rgba(160,107,255,.35);color:#d6c2f5;cursor:pointer;font-family:inherit">ALL VERSIONS</button>
       <div style="text-align:right">
         <div class="clock" id="clock">—:—:—</div>
         <div class="datestr" id="dateStr"></div>
@@ -167,9 +168,9 @@
 
           <!-- drop-off -->
           <div class="col4 glass" style="padding:22px 24px">
-            <div class="sect-title pink">TOP DROP-OFF ZONES <span style="font-family:'Sora',sans-serif;font-size:10px;color:#9d84ad;letter-spacing:1px;font-weight:400">· 24H</span></div>
+            <div class="sect-title pink">TOP DROP-OFF ZONES <span style="font-family:'Sora',sans-serif;font-size:10px;color:#9d84ad;letter-spacing:1px;font-weight:400">· ALL TIME</span></div>
             <div style="display:flex;flex-direction:column;margin-top:10px" id="dropZones"></div>
-            <div class="sect-title pink" style="margin-top:20px">TOP DROP-OFF MAPS <span style="font-family:'Sora',sans-serif;font-size:10px;color:#9d84ad;letter-spacing:1px;font-weight:400">· 24H</span></div>
+            <div class="sect-title pink" style="margin-top:20px">TOP DROP-OFF MAPS <span style="font-family:'Sora',sans-serif;font-size:10px;color:#9d84ad;letter-spacing:1px;font-weight:400">· ALL TIME</span></div>
             <div style="display:flex;flex-direction:column;margin-top:10px" id="dropMaps"></div>
           </div>
 
@@ -221,7 +222,7 @@
               </div>
               <div>
                 <label class="field-label">MIN VERSION</label>
-                <input id="annVersion" class="field" style="font-size:13px" placeholder="0.3.4">
+                <input id="annVersion" class="field" style="font-size:13px" placeholder="0.5.1">
               </div>
             </div>
             <button class="btn-gold" id="annPublish" style="margin-top:22px">PUBLISH<span class="sheen"></span></button>
@@ -240,11 +241,21 @@
 
             <div class="glass" style="padding:24px 28px">
               <div class="sect-title">ANNOUNCEMENT REACH</div>
-              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:18px">
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px">
                 <div><div style="font-size:26px;font-weight:600;color:#f6ecf7;font-variant-numeric:tabular-nums" id="reachImpressions">—</div><div style="font-size:10px;letter-spacing:1.4px;color:#9d84ad;margin-top:4px">IMPRESSIONS (VUES)</div></div>
+                <div><div style="font-size:26px;font-weight:600;color:#ffd98a;font-variant-numeric:tabular-nums" id="reachClicks">—</div><div style="font-size:10px;letter-spacing:1.4px;color:#9d84ad;margin-top:4px">LINK CLICKS <span id="reachCtr" style="letter-spacing:.5px;color:#6f5a80"></span></div></div>
                 <div><div style="font-size:26px;font-weight:600;color:#ffb3cd;font-variant-numeric:tabular-nums" id="reachOnline">—</div><div style="font-size:10px;letter-spacing:1.4px;color:#9d84ad;margin-top:4px">PLAYERS ONLINE NOW</div></div>
               </div>
-              <div style="font-size:10.5px;color:#6f5a80;margin-top:14px">seen by players in-game and in the launcher</div>
+              <div style="font-size:10.5px;color:#6f5a80;margin-top:14px">seen by players in-game and in the launcher · clicks on « see details »</div>
+            </div>
+
+            <div class="glass" style="padding:24px 28px">
+              <div class="sect-title">LINK CLICKS</div>
+              <div class="sect-sub">in-game buttons · clicks · share of players who clicked</div>
+              <div style="display:flex;flex-direction:column;margin-top:12px" id="linkTargets"></div>
+              <div class="divider" style="margin:18px 0 14px"></div>
+              <div class="mini-label">ANNOUNCEMENTS WITH A LINK · clicks / views · rate</div>
+              <div style="display:flex;flex-direction:column;margin-top:10px" id="linkAnnouncements"></div>
             </div>
           </div>
         </div>
@@ -274,7 +285,7 @@
           <!-- enemy leaderboard -->
           <div class="col4 glass" style="padding:22px 24px">
             <div class="sect-title pink">DEADLIEST ENEMIES</div>
-            <div class="sect-sub">captures per enemy family, all time</div>
+            <div class="sect-sub" id="enemyScope">captures per enemy family</div>
             <div style="display:flex;flex-direction:column;margin-top:12px" id="enemyList"></div>
             <div class="divider" style="margin:18px 0 14px"></div>
             <div class="mini-label">BY EXACT ENEMY · map#event</div>
@@ -315,6 +326,22 @@
                 </div>
               </div>
             </div>
+          </div>
+
+          <!-- bonus -->
+          <div class="col12 glass" style="padding:22px 24px">
+            <div style="display:flex;align-items:center;gap:14px">
+              <div>
+                <div class="sect-title">BONUSES FOUND</div>
+                <div class="sect-sub">share of the <span id="bonusPlayers">0</span> players of this version who found each bonus</div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="text-align:right">
+                <div style="font-size:27px;font-weight:600;color:#c9a2ff;line-height:1" id="bonusCollectorsPct">—</div>
+                <div style="font-size:10px;color:#9d84ad;letter-spacing:1.4px;margin-top:4px">FOUND AT LEAST ONE · <span id="bonusCollectors">0</span></div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px" id="bonusList"></div>
           </div>
 
         </div>
@@ -439,7 +466,7 @@
             <div class="sect-title">PUBLISH NEW UPDATE</div>
             <div class="sect-sub" style="margin-bottom:20px">players will receive this update on next launch</div>
             <label class="field-label">VERSION</label>
-            <input id="updVersion" class="field" placeholder="0.3.4">
+            <input id="updVersion" class="field" placeholder="0.5.1">
             <label class="field-label" style="margin-top:16px">BUILD FILES</label>
             <label class="dropzone" id="updDropzone" for="updFileInput">
               <div style="width:12px;height:12px;transform:rotate(45deg);background:linear-gradient(135deg,#e9b95f,#ff3d81);box-shadow:0 0 14px rgba(255,61,129,.7);animation:runeSpin 9s linear infinite"></div>

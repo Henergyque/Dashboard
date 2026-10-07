@@ -19,7 +19,7 @@ const png = require('./png.js');
 
 // dossier www du jeu ; surchargeable par SG_GAME_WWW si l'arborescence bouge
 const GAME = process.env.SG_GAME_WWW ||
-  path.resolve(__dirname, '../../Succubus Games 0.4.1 - PC/www');
+  path.resolve(__dirname, '../../Succubus Games 0.5.1 - PC/www');
 const OUT  = path.resolve(__dirname, '../maps');
 const ENCRYPTION_KEY = 'd41d8cd98f00b204e9800998ecf8427e';  // MD5 de la chaine vide
 const SRC_TILE = 48;                                        // taille native MV

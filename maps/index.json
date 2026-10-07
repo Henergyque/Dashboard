@@ -3,8 +3,8 @@
   "maps": {
     "6": {
       "name": "Jeu 1-1",
-      "width": 21,
-      "height": 15,
+      "width": 22,
+      "height": 19,
       "file": "map6.png"
     },
     "9": {
@@ -15,14 +15,14 @@
     },
     "11": {
       "name": "Jeu 1-6",
-      "width": 25,
-      "height": 15,
+      "width": 39,
+      "height": 25,
       "file": "map11.png"
     },
     "12": {
       "name": "Jeu 1-7",
       "width": 39,
-      "height": 41,
+      "height": 49,
       "file": "map12.png"
     },
     "19": {
@@ -34,7 +34,7 @@
     "22": {
       "name": "Jeu 2-2 (Grotte)",
       "width": 37,
-      "height": 47,
+      "height": 53,
       "file": "map22.png"
     },
     "23": {

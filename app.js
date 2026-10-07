@@ -26,8 +26,14 @@ const MAP_NAMES = {
   21:'Jeu 2-2 (Bonus Gauche)',22:'Jeu 2-2 (Grotte)',23:'Jeu 2-3 (Droite)',24:'Jeu 2-3 (Grotte)',
   25:'Jeu 2-3 (Bonus)',26:'Jeu 2-3 (Sommet)',27:'Jeu 2-3 (Grotte Fin)',28:'Jeu 2-2 (Buissons)',
   29:'Jeu 2-2 (Bonus Buissons)',30:'Jeu 2-4 (Arbre Outside)',31:'Jeu 2-4 (Arbre Inside)',
-  32:'Jeu 2-4 (Bonus Arbre)'
+  32:'Jeu 2-4 (Bonus Rocher)',33:'Jeu 2-3 (Grotte Bonus)',34:'Jeu 2-4 (Bonus Trigger)',35:'Jeu 1-4 (Bonus)'
 };
+
+/* Versions publiees. Le selecteur de version suivie liste celles que le serveur
+   a deja vues ; sans cette liste, une version qui vient de sortir n'y
+   apparaitrait qu'apres les premieres sessions de joueurs. A completer a chaque
+   sortie, la plus recente en tete. */
+const RELEASES = ['0.5.1', '0.4.1'];
 const mapLabel = (id) => MAP_NAMES[id] ? `${MAP_NAMES[id]} (#${id})` : `Map ${id}`;
 
 const LANG_NAMES = {
@@ -515,7 +521,8 @@ async function fetchLanguages() { try { renderLanguages(await api('/v1/stats/lan
 async function fetchToday() {
   try { const d = await api('/v1/stats/today'); if (d && d.today != null) { counts.today = d.today; setStat('today', counts.today); } } catch (e) {}
 }
-async function refreshDropoff() { try { renderDropoff(await api('/v1/stats/dropoff?rangeMs=' + (24*3600*1000))); } catch (e) {} }
+// depuis toujours (version suivie) : 24 h ne montrait que les joueurs du jour
+async function refreshDropoff() { try { renderDropoff(await api('/v1/stats/dropoff?rangeMs=all')); } catch (e) {} }
 async function refreshConcurrent() {
   try { renderConcurrent(await api(`/v1/stats/concurrent?rangeMs=${RANGE_MS[ccRange]}&bucketMs=${BUCKET_MS[ccRange]}`)); } catch (e) {}
 }
@@ -527,7 +534,7 @@ async function refreshNewPlayers() { try { renderNewPlayers(await api(`/v1/stats
 function renderActiveAnnouncement(a) {
   currentAnnouncementData = a || null;
   const t = $('activeTitle'), m = $('activeMessage'), ago = $('activeAgo'), tags = $('activeTags');
-  const impr = $('reachImpressions'), onl = $('reachOnline');
+  const impr = $('reachImpressions'), onl = $('reachOnline'), clk = $('reachClicks'), ctr = $('reachCtr');
   if (onl) onl.textContent = fmtN(counts.online);
   if (!a || !a.title) {
     if (t) t.textContent = '— no active announcement —';
@@ -535,12 +542,18 @@ function renderActiveAnnouncement(a) {
     if (ago) ago.textContent = 'none';
     if (tags) tags.innerHTML = '';
     if (impr) impr.textContent = '—';
+    if (clk) clk.textContent = '—';
+    if (ctr) ctr.textContent = '';
     return;
   }
   if (t) t.textContent = a.title;
   if (m) m.textContent = a.body || '';
   if (ago) ago.textContent = 'active';
   if (impr) impr.textContent = a.viewCount != null ? fmtN(a.viewCount) : '—';
+  /* Clics sur « Voir les détails » : dit si mettre un lien Patreon / Itch dans
+     une annonce sert à quelque chose. Sans lien, il n'y a rien à cliquer. */
+  if (clk) clk.textContent = a.url ? fmtN(a.clickCount || 0) : 'no link';
+  if (ctr) ctr.textContent = a.url && a.viewCount ? Math.round((a.clickCount || 0) / a.viewCount * 1000) / 10 + '% of views' : '';
   if (tags) {
     let h = '';
     if (a.version) h += `<span style="padding:4px 11px;border-radius:16px;font-size:10.5px;background:rgba(160,107,255,.12);border:1px solid rgba(160,107,255,.3);color:#d6c2f5">min v${esc(a.version)}</span>`;
@@ -629,24 +642,31 @@ function renderDeaths(data) {
   const fatalEl = $('deathFatal');
   if (fatalEl) fatalEl.textContent = fmtN(data.fatalTotal || 0);
 
-  // classement des ennemis — le « counter de mort »
+  /* Classement des ennemis — le « counter de mort ». Il porte sur la carte
+     affichée (le serveur filtre avec ?mapId=) et le pourcentage est la PART des
+     captures de cette carte. Avant, chaque ligne était divisée par la première :
+     le leader affichait donc toujours 100 %, d'où « Oneira - Gameplay 100 % ». */
+  const scopeTotal = data.scopeTotal || data.total || 0;
+  const share = (n) => scopeTotal ? (Math.round(n / scopeTotal * 1000) / 10) + '%' : '—';
+  const scopeEl = $('enemyScope');
+  if (scopeEl) scopeEl.textContent = data.mapId != null
+    ? 'share of the ' + fmtN(scopeTotal) + ' captures on ' + mapLabel(data.mapId)
+    : 'share of all ' + fmtN(scopeTotal) + ' captures';
   const enemies = data.byEnemy || [];
-  const enemyMax = enemies.length ? enemies[0].count : 1;
   const enemyEl = $('enemyList');
   if (enemyEl) enemyEl.innerHTML = enemies.slice(0, 12).map((r, i) => `
     <div class="drop-row">
       <span class="drop-i">${i + 1}</span>
       <span class="drop-name">${esc(r.enemy)}</span>
       <span class="drop-exits">${fmtN(r.count)}</span>
-      <span class="drop-pct">${Math.round(r.count / enemyMax * 100)}%</span>
-    </div>`).join('') || '<div style="color:#6f5a80;font-size:12px;padding:8px 2px">no data yet</div>';
+      <span class="drop-pct">${share(r.count)}</span>
+    </div>`).join('') || '<div style="color:#6f5a80;font-size:12px;padding:8px 2px">no capture on this map</div>';
 
   /* Classement de l'ennemi précis. L'identifiant affiché est « map#event » :
      l'id d'événement n'est unique qu'au sein d'une carte, donc seul le couple
      désigne un ennemi sans ambiguïté. Le nom qui le précède n'est qu'une
      étiquette lisible, il peut être renommé sans que l'id ne bouge. */
   const insts = data.byInstance || [];
-  const instMax = insts.length ? insts[0].count : 1;
   const instEl = $('enemyInstanceList');
   if (instEl) instEl.innerHTML = insts.slice(0, 12).map((r, i) => `
     <div class="drop-row">
@@ -655,19 +675,19 @@ function renderDeaths(data) {
         <span style="color:#6f5a80;font-size:11px">${r.map_id}#${r.enemy_event_id}</span>
       </span>
       <span class="drop-exits">${fmtN(r.count)}</span>
-      <span class="drop-pct">${Math.round(r.count / instMax * 100)}%</span>
-    </div>`).join('') || '<div style="color:#6f5a80;font-size:12px;padding:8px 2px">no data yet</div>';
+      <span class="drop-pct">${share(r.count)}</span>
+    </div>`).join('') || '<div style="color:#6f5a80;font-size:12px;padding:8px 2px">no capture on this map</div>';
 
-  // classement des cartes
+  // classement des cartes : global, en part de toutes les captures du jeu
   const byMap = data.byMap || [];
-  const mapMax = byMap.length ? byMap[0].count : 1;
+  const allTotal = data.total || 0;
   const rankEl = $('deathMapRank');
   if (rankEl) rankEl.innerHTML = byMap.slice(0, 8).map((r, i) => `
     <div class="drop-row">
       <span class="drop-i">${i + 1}</span>
       <span class="drop-name">${esc(mapLabel(r.map_id))}</span>
       <span class="drop-exits">${fmtN(r.count)}</span>
-      <span class="drop-pct">${Math.round(r.count / mapMax * 100)}%</span>
+      <span class="drop-pct">${allTotal ? Math.round(r.count / allTotal * 1000) / 10 : 0}%</span>
     </div>`).join('') || '<div style="color:#6f5a80;font-size:12px;padding:8px 2px">no data yet</div>';
 
   /* Le sélecteur liste TOUTES les cartes rendues, pas seulement celles où
@@ -690,6 +710,16 @@ function renderDeaths(data) {
     if (_deathMapId != null) sel.value = String(_deathMapId);
   }
   drawDeathMap();
+  /* Réponse non filtrée (premier chargement) alors qu'une carte est choisie :
+     on redemande aussitôt les classements de cette carte. `mapId === null`
+     n'existe que sur un serveur qui sait filtrer — un ancien serveur renvoie
+     undefined, ce qui évite de boucler. */
+  if (_deathMapId != null && data.mapId === null) refreshDeaths();
+}
+
+async function refreshDeaths() {
+  const q = _deathMapId != null ? '?mapId=' + _deathMapId : '';
+  try { renderDeaths(await api('/v1/stats/deaths' + q)); } catch (e) {}
 }
 
 function drawDeathMap() {
@@ -773,7 +803,7 @@ function renderEndings(data) {
   const favTotal = favs.reduce((s, [, n]) => s + n, 0) || 1;
   const favEl = $('favouriteList');
   if (favEl) favEl.innerHTML = favs.map(([name, n]) =>
-    `<span class="lang-pill">${esc(name)} <span>${Math.round(n / favTotal * 100)}%</span></span>`).join('')
+    `<span class="lang-pill">${esc(name)} <span>${Math.round(n / favTotal * 100)}% · ${fmtN(n)}</span></span>`).join('')
     || '<span style="color:#6f5a80;font-size:12px">nobody answered yet</span>';
 
   const ad = data.afterDeath || {};
@@ -781,10 +811,82 @@ function renderEndings(data) {
   set('adRetry', ad.retry); set('adLoad', ad.load); set('adTitle', ad.title);
 }
 
+/* Bonus : part des joueurs de la version qui ont trouvé chacun des 15 bonus.
+   Les 15 sont toujours listés, même à 0 : un bonus que personne ne trouve est
+   précisément l'information recherchée. */
+const BONUS_COUNT = 15;
+// carte du coffre de chaque bonus en 0.5.1 (objet « Bonus N », id 20 + N)
+const BONUS_MAPS = { 1: 35, 2: 10, 3: 11, 4: 12, 5: 12, 6: 21, 7: 29, 8: 22, 9: 33, 10: 25, 11: 25, 12: 26, 13: 26, 14: 34, 15: 32 };
+function renderBonuses(data) {
+  if (!data) return;
+  const total = data.totalPlayers || 0;
+  const by = {};
+  for (const r of data.bonuses || []) by[r.bonus] = r;
+  const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+  set('bonusCollectors', fmtN(data.collectors || 0));
+  set('bonusPlayers', fmtN(total));
+  set('bonusCollectorsPct', total ? Math.round((data.collectors || 0) / total * 100) + '%' : '—');
+
+  const listEl = $('bonusList');
+  if (!listEl) return;
+  const rows = [];
+  for (let b = 1; b <= BONUS_COUNT; b++) {
+    const r = Object.assign({ bonus: b, players: 0 }, by[b] || {});
+    r.mapId = BONUS_MAPS[b] || r.mapId;
+    const pct = total ? r.players / total * 100 : 0;
+    rows.push(`
+    <div style="display:grid;grid-template-columns:70px 1fr 120px 54px 46px;align-items:center;gap:10px;font-size:12px">
+      <span style="color:#f6ecf7;font-weight:600">Bonus ${b}</span>
+      <div style="height:8px;border-radius:5px;background:rgba(255,255,255,.05);overflow:hidden">
+        <div style="width:${Math.min(100, pct).toFixed(1)}%;height:100%;background:linear-gradient(90deg,#c9a2ff,#ff5e97)"></div>
+      </div>
+      <span style="color:#6f5a80;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.mapId ? esc(MAP_NAMES[r.mapId] || ('Map ' + r.mapId)) : ''}</span>
+      <span style="font-variant-numeric:tabular-nums;color:#cdb8d8;text-align:right">${fmtN(r.players)}</span>
+      <span style="font-variant-numeric:tabular-nums;color:#9d84ad;text-align:right">${total ? (Math.round(pct * 10) / 10) + '%' : '—'}</span>
+    </div>`);
+  }
+  listEl.innerHTML = rows.join('');
+}
+
+/* Clics sur les liens externes du jeu, et rendement des liens d'annonces. */
+const LINK_LABELS = { discord: 'Discord', patreon: 'Patreon', itch: 'Itch.io', announcement: 'Announcement link', changelog: 'Changelog link' };
+const SOURCE_LABELS = { title: 'title screen', exit: 'exit screen', announcement: 'announcement', changelog: 'changelog' };
+function renderLinks(data) {
+  if (!data) return;
+  const total = data.totalPlayers || 0;
+  const tEl = $('linkTargets');
+  if (tEl) {
+    const by = {};
+    for (const r of data.byTarget || []) by[r.target] = r;
+    tEl.innerHTML = Object.keys(LINK_LABELS).map(k => {
+      const r = by[k] || { clicks: 0, players: 0 };
+      const from = (data.bySource || []).filter(s => s.target === k && s.source && s.source !== k)
+        .map(s => (SOURCE_LABELS[s.source] || s.source) + ' ' + fmtN(s.clicks)).join(' · ');
+      return `<div class="drop-row">
+        <span class="drop-name">${esc(LINK_LABELS[k])}${from ? ` <span style="color:#6f5a80;font-size:11px">${esc(from)}</span>` : ''}</span>
+        <span class="drop-exits" title="clicks">${fmtN(r.clicks)}</span>
+        <span class="drop-pct" title="share of players who clicked">${total ? Math.round(r.players / total * 1000) / 10 + '%' : '—'}</span>
+      </div>`;
+    }).join('');
+  }
+  const aEl = $('linkAnnouncements');
+  if (aEl) {
+    const anns = (data.announcements || []).filter(a => a.url);
+    aEl.innerHTML = anns.map(a => `
+      <div class="drop-row">
+        <span class="drop-name">${esc(a.title)}${a.active ? ' <span style="color:#7dffc4;font-size:10px">● active</span>' : ''}</span>
+        <span class="drop-exits" title="clicks / views">${fmtN(a.clicks)} / ${fmtN(a.views)}</span>
+        <span class="drop-pct" title="click-through rate">${a.views ? Math.round(a.clicks / a.views * 1000) / 10 + '%' : '—'}</span>
+      </div>`).join('') || '<div style="color:#6f5a80;font-size:12px;padding:8px 2px">no announcement with a link yet</div>';
+  }
+}
+async function fetchLinks() { try { renderLinks(await api('/v1/stats/links')); } catch (e) {} }
+
 async function refreshGameplay() {
   await loadMapIndex();
-  try { renderDeaths(await api('/v1/stats/deaths')); } catch (e) {}
+  await refreshDeaths();
   try { renderEndings(await api('/v1/stats/endings')); } catch (e) {}
+  try { renderBonuses(await api('/v1/stats/bonuses')); } catch (e) {}
 }
 
 // ===================================================================
@@ -1261,7 +1363,9 @@ async function refreshTrackedVersion() {
       api('/v1/stats/versions')
     ]);
     const current = (state && state.trackedVersion) || 'all';
-    const seen = Object.keys((versions && versions.total) || {})
+    // versions vues par le serveur + versions publiees, meme sans session encore
+    const seen = Array.from(new Set(Object.keys((versions && versions.total) || {}).concat(RELEASES)))
+      .filter(Boolean)
       .sort((a, b) => (b || '').localeCompare(a || '', undefined, { numeric: true }));
 
     sel.innerHTML = '<option value="all">All versions</option>' +
@@ -1277,6 +1381,13 @@ async function refreshTrackedVersion() {
 }
 
 function setTrackedHint(v) {
+  /* Pastille de l'en-tete : on voit d'un coup d'oeil quelle version tous les
+     panneaux affichent, sans aller dans les reglages. */
+  const pill = $('trackedPill');
+  if (pill) {
+    pill.textContent = (!v || v === 'all') ? 'ALL VERSIONS' : 'VIEWING ' + v;
+    pill.classList.remove('hidden');
+  }
   const el = $('trackedHint');
   if (!el) return;
   el.textContent = (!v || v === 'all')
@@ -1317,7 +1428,7 @@ async function refreshAllPanels() {
     () => api('/v1/live').then(d => d && d.live && renderLive(d.live)),
     refreshDropoff, refreshConcurrent, refreshNewPlayers,
     fetchToday, fetchPlatforms, fetchVersions, fetchSessionStats, fetchLanguages,
-    refreshGameplay, refreshSurveys, fetchReports
+    refreshGameplay, refreshSurveys, fetchReports, fetchLinks
   ];
   for (const step of steps) {
     try { await step(); } catch (e) {}
@@ -1371,7 +1482,7 @@ function switchTab(tab) {
   if (changed) { const veil = $('veil'); if (veil) { veil.classList.remove('on'); void veil.offsetWidth; veil.classList.add('on'); setTimeout(() => veil.classList.remove('on'), 760); } }
   if (tab === 'gameplay') refreshGameplay();
   if (tab === 'surveys') { svRenderEditor(); refreshSurveys(); }
-  if (tab === 'announce') { fetchAnnouncement(); populateAnnounceForm(); }
+  if (tab === 'announce') { fetchAnnouncement(); populateAnnounceForm(); fetchLinks(); }
   if (tab === 'reports') { fetchReports(); const b = $('navReports'); if (b) b.classList.add('hidden'); }
   if (tab === 'update') fetchCurrentUpdate();
   if (tab === 'settings') populateSettings();
@@ -1634,7 +1745,8 @@ $('svFillEn').addEventListener('click', svFillFromEn);
 $('svReset').addEventListener('click', () => { svDraft = svBlank(); svLang = 'en'; svShowError(''); svRenderEditor(); });
 $('deathMapSelect').addEventListener('change', (e) => {
   _deathMapId = parseInt(e.target.value, 10);
-  drawDeathMap();                                    // redessin local, pas de requête
+  drawDeathMap();                                    // croix tout de suite...
+  refreshDeaths();                                   // ...classements de la carte ensuite
 });
 $('annPublish').addEventListener('click', publishAnnouncement);
 $('annDelete').addEventListener('click', deleteAnnouncement);
@@ -1645,6 +1757,7 @@ $('updClear').addEventListener('click', clearUpdate);
 $('cfgSave').addEventListener('click', saveSettings);
 $('cfgTest').addEventListener('click', testConnection);
 if ($('cfgTrackedSave')) $('cfgTrackedSave').addEventListener('click', saveTrackedVersion);
+if ($('trackedPill')) $('trackedPill').addEventListener('click', () => switchTab('settings'));
 $('tokenToggle').addEventListener('click', () => {
   const inp = $('cfgToken'), btn = $('tokenToggle');
   if (inp.type === 'password') { inp.type = 'text'; btn.textContent = 'HIDE'; } else { inp.type = 'password'; btn.textContent = 'REVEAL'; }
@@ -1689,6 +1802,7 @@ setInterval(fetchToday, 60 * 1000);
 setInterval(checkReportsBadge, 60 * 1000);
 setInterval(checkVersion, VERSION_CHECK_INTERVAL_MS);
 setInterval(fetchAnnouncement, 5 * 60 * 1000);
+setInterval(() => { if (currentTab === 'announce') { fetchAnnouncement(); fetchLinks(); } }, 60 * 1000);
 setInterval(tickClock, 1000);
 setInterval(pingLatency, 10 * 1000);
 

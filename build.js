@@ -7,7 +7,7 @@
   await nwbuild({
     // maps/ : fonds de carte de l'onglet GAMEPLAY, produits par tools/render-maps.js.
     // L'oublier ici est silencieux — l'app se lance et les cartes sont juste vides.
-    srcDir: './{app.js,index.html,dashboard.css,package.json,vendor/**,maps/**,icon.png,succubus.png}',
+    srcDir: './{app.js,index.html,dashboard.css,package.json,vendor/**,maps/**,assets/**,icon.png,succubus.png}',
     mode: 'build',
     version: '0.82.0',
     flavor: 'normal',
@@ -17,7 +17,7 @@
     glob: true,
     app: {
       name: 'SuccubusStats',
-      version: '1.0.0',
+      version: '2.2.0',
       comments: 'Live owner dashboard for Succubus Games telemetry.'
     }
   });
