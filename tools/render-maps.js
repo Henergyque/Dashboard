@@ -20,7 +20,10 @@ const png = require('./png.js');
 // dossier www du jeu ; surchargeable par SG_GAME_WWW si l'arborescence bouge
 const GAME = process.env.SG_GAME_WWW ||
   path.resolve(__dirname, '../../Succubus Games 0.5.1 - PC/www');
-const OUT  = path.resolve(__dirname, '../maps');
+// dossier de sortie : maps/ pour la derniere version ; pour figer une ancienne
+// version a part, SG_MAPS_OUT=maps/0.4.1 (voir MAP_SETS dans app.js)
+const OUT  = process.env.SG_MAPS_OUT ? path.resolve(__dirname, '..', process.env.SG_MAPS_OUT)
+  : path.resolve(__dirname, '../maps');
 const ENCRYPTION_KEY = 'd41d8cd98f00b204e9800998ecf8427e';  // MD5 de la chaine vide
 const SRC_TILE = 48;                                        // taille native MV
 const TILE = parseInt(process.argv[2] || '48', 10);

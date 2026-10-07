@@ -607,9 +607,19 @@ async function deleteAnnouncement() {
 // ===================================================================
 //  GAMEPLAY — death map, enemy ranking, endings
 // ===================================================================
-let _mapIndex = null;          // maps/index.json, chargé une fois
+let _mapIndex = null;          // index.json du jeu de cartes courant
+let _mapDir = null;            // dossier de ce jeu de cartes ('maps/' ou 'maps/0.4.1/')
 let _deathData = null;         // dernière réponse de /v1/stats/deaths
 let _deathMapId = null;        // carte affichée
+let _trackedVersion = null;    // version suivie, lue sur le serveur
+
+/* Fonds de carte par version du jeu. Les coordonnées des captures sont
+   relevées sur les cartes de LEUR version : plusieurs cartes ont changé de
+   taille en 0.5.1 (6, 11, 12, 22), et des croix 0.4.1 posées sur un fond 0.5.1
+   tomberaient à côté. maps/ porte la dernière version (et sert pour « toutes
+   versions ») ; chaque version précédente garde ses rendus dans maps/<version>/. */
+const MAP_SETS = { '0.4.1': 'maps/0.4.1/' };
+const mapDir = () => MAP_SETS[_trackedVersion] || 'maps/';
 
 const ENDING_LABELS = { chad: 'Chad Ending', gameover_jeu1: 'Game Over — Trial 1', gameover_jeu2: 'Game Over — Trial 2' };
 // gameover_jeu3/4/5 arriveront tout seuls : le libellé retombe sur un formatage générique
@@ -625,11 +635,13 @@ const ENDING_COLORS = {
 };
 
 async function loadMapIndex() {
-  if (_mapIndex !== null) return _mapIndex;
+  const dir = mapDir();
+  if (_mapIndex !== null && _mapDir === dir) return _mapIndex;
   try {
-    const res = await fetch('maps/index.json');
+    const res = await fetch(dir + 'index.json');
     _mapIndex = res.ok ? await res.json() : { tileSize: 48, maps: {} };
   } catch (e) { _mapIndex = { tileSize: 48, maps: {} }; }
+  _mapDir = dir;
   return _mapIndex;
 }
 
@@ -747,7 +759,7 @@ function drawDeathMap() {
   if (empty) empty.classList.add('hidden');
   if (cnt) cnt.textContent = fmtN(points.reduce((s, p) => s + p.count, 0));
 
-  const src = 'maps/' + info.file;
+  const src = (_mapDir || 'maps/') + info.file;
   if (img.getAttribute('src') !== src) img.setAttribute('src', src);
 
   /* Le viewBox est en cases, pas en pixels : les croix se placent en coordonnées
@@ -1381,6 +1393,12 @@ async function refreshTrackedVersion() {
 }
 
 function setTrackedHint(v) {
+  /* Le jeu de cartes de l'onglet GAMEPLAY suit la version affichée. */
+  const tracked = (!v || v === 'all') ? null : v;
+  if (tracked !== _trackedVersion) {
+    _trackedVersion = tracked;
+    if (currentTab === 'gameplay') refreshGameplay();
+  }
   /* Pastille de l'en-tete : on voit d'un coup d'oeil quelle version tous les
      panneaux affichent, sans aller dans les reglages. */
   const pill = $('trackedPill');
